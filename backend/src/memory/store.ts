@@ -1,47 +1,45 @@
-import type { EngineerContext, Collision, Intervention } from '@podman/shared';
-import type { InterventionOutcome } from '@podman/shared';
+import type { EngineerContext, Collision, Intervention, InterventionOutcome } from '@podman/shared';
+import { collections } from './db.js';
 
 /**
- * Continual-learning memory: persist observations + intervention outcomes to
- * MongoDB Atlas and embed file/feature notes into Voyage vectors so later
- * sessions are sharper ("more useful the more you use it").
+ * Continual-learning memory: persist observations, collisions, interventions,
+ * and outcomes to MongoDB so later sessions get sharper. Writes are best-effort
+ * — a Mongo hiccup logs a warning rather than crashing the agent/server.
  */
-export interface PodMemory {
-  recordObservation(ctx: EngineerContext): Promise<void>;
-  recordOutcome(intervention: Intervention, accepted: boolean): Promise<void>;
+async function persist(name: string, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    console.warn(`[memory] ${name} persist failed: ${(err as Error).message}`);
+  }
 }
-
-/** In-memory stub so the rest of the pipeline can run before Atlas is wired. */
-export function createInMemoryStore(): PodMemory {
-  const observations: EngineerContext[] = [];
-  return {
-    async recordObservation(ctx) {
-      observations.push(ctx);
-    },
-    async recordOutcome() {
-      /* no-op until Atlas is wired */
-    },
-  };
-}
-
-// Standalone helpers used by the PodMan orchestrator and HTTP server.
-const _observations: EngineerContext[] = [];
-const _collisions: Collision[] = [];
-const _interventions: Intervention[] = [];
-const _outcomes: InterventionOutcome[] = [];
 
 export async function recordObservation(ctx: EngineerContext): Promise<void> {
-  _observations.push(ctx);
+  await persist('observation', async () => (await collections()).observations.insertOne({ ...ctx }));
 }
 
 export async function recordCollision(collision: Collision): Promise<void> {
-  _collisions.push(collision);
+  await persist('collision', async () => (await collections()).collisions.insertOne({ ...collision }));
 }
 
 export async function recordIntervention(intervention: Intervention): Promise<void> {
-  _interventions.push(intervention);
+  await persist('intervention', async () =>
+    (await collections()).interventions.insertOne({ ...intervention }),
+  );
 }
 
 export async function recordOutcome(outcome: InterventionOutcome): Promise<void> {
-  _outcomes.push(outcome);
+  await persist('outcome', async () => (await collections()).outcomes.insertOne({ ...outcome }));
+}
+
+/** Document counts per collection — used by the /api/memory/stats endpoint. */
+export async function memoryStats(): Promise<Record<string, number>> {
+  const c = await collections();
+  const [observations, collisions, interventions, outcomes] = await Promise.all([
+    c.observations.estimatedDocumentCount(),
+    c.collisions.estimatedDocumentCount(),
+    c.interventions.estimatedDocumentCount(),
+    c.outcomes.estimatedDocumentCount(),
+  ]);
+  return { observations, collisions, interventions, outcomes };
 }

@@ -5,7 +5,8 @@ import { WebSocketServer } from 'ws';
 import { AccessToken } from 'livekit-server-sdk';
 import { env } from './env.js';
 import { createSyncPr } from './github/client.js';
-import { recordOutcome } from './memory/store.js';
+import { recordOutcome, memoryStats } from './memory/store.js';
+import { initMemory } from './memory/db.js';
 import type { InterventionOutcome } from '@podman/shared';
 
 const app = express();
@@ -44,6 +45,15 @@ app.post('/api/outcome', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Memory counts — quick way to confirm Mongo persistence is working.
+app.get('/api/memory/stats', async (_req, res) => {
+  try {
+    res.json(await memoryStats());
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 const http = createServer(app);
 
 // ws relay: the agent pushes collision/intervention JSON here; PWAs subscribed by pod receive it.
@@ -58,4 +68,7 @@ wss.on('connection', (ws) => {
   });
 });
 
-http.listen(env.PORT, '0.0.0.0', () => console.log(`[server] :${env.PORT}`));
+http.listen(env.PORT, '0.0.0.0', () => {
+  console.log(`[server] :${env.PORT}`);
+  initMemory().catch((e) => console.warn(`[memory] init failed: ${(e as Error).message}`));
+});
