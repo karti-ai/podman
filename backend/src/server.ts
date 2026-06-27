@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { AccessToken } from 'livekit-server-sdk';
@@ -8,6 +9,7 @@ import { recordOutcome } from './memory/store.js';
 import type { InterventionOutcome } from '@podman/shared';
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true }));
 

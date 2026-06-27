@@ -8,10 +8,10 @@ export async function fetchPodToken(
   identity: string,
   name: string,
 ): Promise<{ token: string; url: string }> {
-  const res = await fetch(`${BACKEND_URL}/pods/${encodeURIComponent(podId)}/token`, {
+  const res = await fetch(`${BACKEND_URL}/api/token`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identity, name }),
+    body: JSON.stringify({ room: podId, identity, name }),
   });
   if (!res.ok) throw new Error(`token request failed: ${res.status}`);
   return res.json();
