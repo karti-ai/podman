@@ -6,7 +6,7 @@ export function CreatePodForm({
   onCreate,
 }: {
   busy: boolean;
-  onCreate: (input: PodInput) => void;
+  onCreate: (input: PodInput) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -14,18 +14,23 @@ export function CreatePodForm({
   const [description, setDescription] = useState('');
   const [firstMember, setFirstMember] = useState('');
 
-  function submit() {
+  async function submit() {
     if (!name.trim()) return;
-    onCreate({
-      name: name.trim(),
-      repo: repo.trim(),
-      description: description.trim(),
-      members: firstMember.trim() ? [firstMember.trim()] : [],
-    });
-    setName('');
-    setDescription('');
-    setFirstMember('');
-    setOpen(false);
+    try {
+      await onCreate({
+        name: name.trim(),
+        repo: repo.trim(),
+        description: description.trim(),
+        members: firstMember.trim() ? [firstMember.trim()] : [],
+      });
+      // only clear + close on success; on error keep the user's input
+      setName('');
+      setDescription('');
+      setFirstMember('');
+      setOpen(false);
+    } catch {
+      /* error surfaced by parent; keep inputs so nothing is lost */
+    }
   }
 
   if (!open) {

@@ -51,8 +51,16 @@ app.post('/api/sync-pr', async (req, res) => {
 
 // Outcome ACK -> closes the continual-learning policy loop.
 app.post('/api/outcome', async (req, res) => {
-  await recordOutcome(req.body as InterventionOutcome);
-  res.json({ ok: true });
+  try {
+    const o = (req.body ?? {}) as Partial<InterventionOutcome>;
+    if (typeof o.interventionId !== 'string' || !o.interventionId) {
+      return res.status(400).json({ error: 'interventionId is required' });
+    }
+    await recordOutcome(req.body as InterventionOutcome);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 // Memory counts — quick way to confirm Mongo persistence is working.

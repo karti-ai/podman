@@ -10,14 +10,16 @@ import { PodView } from './components/PodView.js';
 export default function App() {
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
-  // join state
-  const [joinedPod, setJoinedPod] = useState<Pod | null>(null);
+  // join state — keep the id and derive the pod so it never goes stale
+  const [joinedPodId, setJoinedPodId] = useState<string | null>(null);
   const [member, setMember] = useState('');
   const [devMode, setDevMode] = useState(false);
   const [room, setRoom] = useState<Room | null>(null);
+
+  const joinedPod = joinedPodId ? (pods.find((p) => p.id === joinedPodId) ?? null) : null;
 
   async function refresh() {
     setLoading(true);
@@ -35,40 +37,58 @@ export default function App() {
     void refresh();
   }, []);
 
-  /** Run a mutation, reflect the result in local state, surface errors. */
-  async function mutate(fn: () => Promise<void>) {
-    setBusy(true);
+  const startPending = (key: string) => setPending((s) => new Set(s).add(key));
+  const endPending = (key: string) =>
+    setPending((s) => {
+      const n = new Set(s);
+      n.delete(key);
+      return n;
+    });
+
+  /** Run a mutation keyed by pod id (or 'new'); only that card shows busy. */
+  async function run(key: string, fn: () => Promise<void>) {
+    startPending(key);
     setError(null);
     try {
       await fn();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      endPending(key);
     }
   }
 
   const upsert = (p: Pod) => setPods((cur) => cur.map((x) => (x.id === p.id ? p : x)));
 
-  const handleCreate = (input: PodInput) =>
-    mutate(async () => {
+  // create rethrows so CreatePodForm can keep the user's input on failure
+  async function handleCreate(input: PodInput): Promise<void> {
+    startPending('new');
+    setError(null);
+    try {
       const created = await api.createPod(input);
       setPods((cur) => [...cur, created]);
-    });
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
+    } finally {
+      endPending('new');
+    }
+  }
+
   const handleUpdate = (id: string, patch: PodInput) =>
-    mutate(async () => upsert(await api.updatePod(id, patch)));
+    run(id, async () => upsert(await api.updatePod(id, patch)));
   const handleDelete = (id: string) =>
-    mutate(async () => {
+    run(id, async () => {
       await api.deletePod(id);
       setPods((cur) => cur.filter((x) => x.id !== id));
     });
   const handleAddMember = (id: string, name: string) =>
-    mutate(async () => upsert(await api.addMember(id, name)));
+    run(id, async () => upsert(await api.addMember(id, name)));
   const handleRemoveMember = (id: string, name: string) =>
-    mutate(async () => upsert(await api.removeMember(id, name)));
+    run(id, async () => upsert(await api.removeMember(id, name)));
 
   async function handleJoin(pod: Pod, who: string) {
-    setBusy(true);
+    startPending(pod.id);
     setError(null);
     try {
       const identity = `${who}-${Math.random().toString(36).slice(2, 7)}`;
@@ -76,18 +96,18 @@ export default function App() {
       setRoom(result.room);
       setDevMode(result.mode === 'dev');
       setMember(who);
-      setJoinedPod(pod);
+      setJoinedPodId(pod.id);
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      endPending(pod.id);
     }
   }
 
   function handleLeave() {
     room?.disconnect();
     setRoom(null);
-    setJoinedPod(null);
+    setJoinedPodId(null);
   }
 
   return (
@@ -133,7 +153,7 @@ export default function App() {
                 <PodCard
                   key={pod.id}
                   pod={pod}
-                  busy={busy}
+                  busy={pending.has(pod.id)}
                   onJoin={handleJoin}
                   onAddMember={handleAddMember}
                   onRemoveMember={handleRemoveMember}
@@ -141,7 +161,7 @@ export default function App() {
                   onDelete={handleDelete}
                 />
               ))}
-              <CreatePodForm busy={busy} onCreate={handleCreate} />
+              <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
             </div>
           )}
         </main>

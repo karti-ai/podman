@@ -48,13 +48,23 @@ export async function initMemory(): Promise<void> {
   const db = await getDb();
   await db.command({ ping: 1 });
   const c = await collections();
-  await Promise.all([
-    c.pods.createIndex({ id: 1 }, { unique: true }),
-    c.observations.createIndex({ podId: 1, observedAt: -1 }),
-    c.observations.createIndex({ engineerId: 1 }),
-    c.collisions.createIndex({ podId: 1, detectedAt: -1 }),
-    c.interventions.createIndex({ collisionId: 1 }),
-    c.outcomes.createIndex({ interventionId: 1 }),
-  ]);
+  // Create each index independently so one failure (e.g. the unique pods index
+  // failing on pre-existing duplicate ids) doesn't abort the others or block
+  // seeding. Failures are logged loudly rather than silently swallowed.
+  const indexes: Array<[string, () => Promise<unknown>]> = [
+    ['pods.id (unique)', () => c.pods.createIndex({ id: 1 }, { unique: true })],
+    ['observations.podId', () => c.observations.createIndex({ podId: 1, observedAt: -1 })],
+    ['observations.engineerId', () => c.observations.createIndex({ engineerId: 1 })],
+    ['collisions.podId', () => c.collisions.createIndex({ podId: 1, detectedAt: -1 })],
+    ['interventions.collisionId', () => c.interventions.createIndex({ collisionId: 1 })],
+    ['outcomes.interventionId', () => c.outcomes.createIndex({ interventionId: 1 })],
+  ];
+  for (const [name, make] of indexes) {
+    try {
+      await make();
+    } catch (err) {
+      console.error(`[memory] index "${name}" failed: ${(err as Error).message}`);
+    }
+  }
   console.log(`[memory] mongo connected -> ${db.databaseName}`);
 }
