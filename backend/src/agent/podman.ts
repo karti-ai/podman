@@ -5,6 +5,7 @@ import { analyzeFrame } from '../vision/gemini.js';
 import { detectCollisions } from '../collision/detector.js';
 import { getGithubState } from '../github/client.js';
 import { recordObservation, recordCollision, recordIntervention } from '../memory/store.js';
+import { getGitStates } from '../memory/db.js';
 import { recallSimilar } from '../memory/vectors.js';
 import { shouldIntervene, preferredAction } from '../memory/policy.js';
 import { speak } from '../voice/live.js';
@@ -35,6 +36,14 @@ export class PodMan {
     const ctx = await analyzeFrame(engineerId, this.podId, jpeg);
     this.contexts.set(engineerId, ctx);
     await recordObservation(ctx);
+
+    // Fuse git ground truth: engineer_states written by scripts/podman-agent.mjs.
+    // Keyed by name (matches --name arg), same as LiveKit participant identity.
+    const gitStates = await getGitStates(this.podId);
+    for (const [id, c] of this.contexts) {
+      const git = gitStates.get(id);
+      if (git && git.changedFiles.length > 0) c.hasUnpushedChanges = true;
+    }
 
     const github = await getGithubState(); // cached
     const collisions = detectCollisions([...this.contexts.values()], github);

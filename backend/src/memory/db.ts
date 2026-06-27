@@ -43,6 +43,38 @@ export async function collections(): Promise<PodCollections> {
   };
 }
 
+export interface GitState {
+  changedFiles: string[];
+  branch: string | null;
+  recentCommit: string | null;
+  gitUpdatedAt: Date | null;
+}
+
+/** Fetch latest git state per engineer for a pod from the engineer_states collection.
+ *  Returns a map keyed by engineer name (matches --name arg used in podman-agent.mjs). */
+export async function getGitStates(podId: string): Promise<Map<string, GitState>> {
+  const db = await getDb();
+  const col = db.collection<{
+    _id: string;
+    name: string;
+    changedFiles?: string[];
+    branch?: string | null;
+    recentCommit?: string | null;
+    gitUpdatedAt?: Date;
+  }>('engineer_states');
+  const docs = await col.find({ podId }).toArray();
+  const map = new Map<string, GitState>();
+  for (const doc of docs) {
+    map.set(doc.name, {
+      changedFiles: doc.changedFiles ?? [],
+      branch: doc.branch ?? null,
+      recentCommit: doc.recentCommit ?? null,
+      gitUpdatedAt: doc.gitUpdatedAt ?? null,
+    });
+  }
+  return map;
+}
+
 /** Connect, verify reachability, and create helpful indexes. Call once on startup. */
 export async function initMemory(): Promise<void> {
   const db = await getDb();
