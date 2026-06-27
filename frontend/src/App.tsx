@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import type { Room } from 'livekit-client';
 import { joinPod } from './lib/pod.js';
-import { TEAMS } from './lib/teams.js';
+import { TEAMS, teamById } from './lib/teams.js';
+import { TeamCard } from './components/TeamCard.js';
+import { PodView } from './components/PodView.js';
 
 export default function App() {
   const [teamId, setTeamId] = useState(TEAMS[0]!.id);
-  const team = useMemo(() => TEAMS.find((t) => t.id === teamId) ?? TEAMS[0]!, [teamId]);
+  const team = useMemo(() => teamById(teamId), [teamId]);
   const [member, setMember] = useState(team.members[0]!);
   const [room, setRoom] = useState<Room | null>(null);
   const [joined, setJoined] = useState(false);
@@ -15,8 +17,8 @@ export default function App() {
 
   function handleTeamChange(id: string) {
     setTeamId(id);
-    const next = TEAMS.find((t) => t.id === id);
-    if (next) setMember(next.members[0]!);
+    const next = teamById(id);
+    if (!next.members.includes(member)) setMember(next.members[0]!);
   }
 
   async function handleJoin() {
@@ -35,72 +37,68 @@ export default function App() {
     }
   }
 
+  function handleLeave() {
+    room?.disconnect();
+    setRoom(null);
+    setJoined(false);
+  }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-6">
-      <header>
-        <h1 className="text-3xl font-bold">🛰️ PodMan</h1>
-        <p className="text-sm text-slate-400">
-          Join a pod and share your screen — PodMan watches for collisions before you push.
-        </p>
+    <div className="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6">
+      <header className="mb-8 flex items-center gap-3">
+        <span className="text-3xl">🛰️</span>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100">PodMan</h1>
+          <p className="text-sm text-slate-400">
+            The teammate that sees what git can&apos;t — collisions caught before you push.
+          </p>
+        </div>
       </header>
 
       {joined ? (
-        <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-4">
-          <p className="font-medium text-emerald-400">
-            {member} connected to “{team.name}”.
-          </p>
-          <p className="mt-1 text-sm text-slate-400">
-            {room ? 'Sharing screen + mic. PodMan is watching.' : 'Pod joined.'}
-          </p>
-          {devMode && (
-            <p className="mt-3 rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
-              DEV MODE — LiveKit not configured, so screen capture is off. Set LIVEKIT_* in the
-              backend .env (and serve over HTTPS) for a real join.
-            </p>
-          )}
-        </section>
+        <PodView team={team} me={member} devMode={devMode} onLeave={handleLeave} />
       ) : (
-        <section className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1 text-sm text-slate-400">
-            Team
-            <select
-              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-base text-slate-100"
-              value={teamId}
-              onChange={(e) => handleTeamChange(e.target.value)}
-            >
+        <main className="flex flex-col gap-6">
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-slate-400">Pick a team</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {TEAMS.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} · {t.repo}
-                </option>
+                <TeamCard
+                  key={t.id}
+                  team={t}
+                  selected={t.id === teamId}
+                  onSelect={handleTeamChange}
+                />
               ))}
-            </select>
-          </label>
+            </div>
+          </section>
 
-          <label className="flex flex-col gap-1 text-sm text-slate-400">
-            You
-            <select
-              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-base text-slate-100"
-              value={member}
-              onChange={(e) => setMember(e.target.value)}
+          <section className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:flex-row sm:items-end">
+            <label className="flex flex-1 flex-col gap-1 text-sm text-slate-400">
+              Join “{team.name}” as
+              <select
+                className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-base text-slate-100"
+                value={member}
+                onChange={(e) => setMember(e.target.value)}
+              >
+                {team.members.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="rounded-md bg-emerald-600 px-5 py-2 font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+              onClick={handleJoin}
+              disabled={connecting}
             >
-              {team.members.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            className="rounded-md bg-emerald-600 px-3 py-2 font-medium hover:bg-emerald-500 disabled:opacity-50"
-            onClick={handleJoin}
-            disabled={connecting}
-          >
-            {connecting ? 'Joining…' : `Join ${team.name} as ${member}`}
-          </button>
+              {connecting ? 'Joining…' : 'Join pod'}
+            </button>
+          </section>
           {error && <p className="text-sm text-red-400">{error}</p>}
-        </section>
+        </main>
       )}
-    </main>
+    </div>
   );
 }
