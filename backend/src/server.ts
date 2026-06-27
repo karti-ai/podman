@@ -17,6 +17,7 @@ import {
   removeMember,
   seedDefaultPods,
 } from './pods/store.js';
+import { getPresence } from './livekit/rooms.js';
 import type { InterventionOutcome } from '@podman/shared';
 
 const app = express();
@@ -67,6 +68,15 @@ app.post('/api/outcome', async (req, res) => {
 app.get('/api/memory/stats', async (_req, res) => {
   try {
     res.json(await memoryStats());
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// Live presence: who is currently connected in each pod's LiveKit room.
+app.get('/api/presence', async (_req, res) => {
+  try {
+    res.json(await getPresence());
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }

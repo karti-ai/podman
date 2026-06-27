@@ -41,6 +41,11 @@ export async function listPods(): Promise<Pod[]> {
   return json(await fetch(`${BACKEND_URL}/api/pods`));
 }
 
+/** Display names currently connected per pod id (= LiveKit room name). */
+export async function getPresence(): Promise<Record<string, string[]>> {
+  return json(await fetch(`${BACKEND_URL}/api/presence`));
+}
+
 export async function createPod(input: PodInput): Promise<Pod> {
   return json(
     await fetch(`${BACKEND_URL}/api/pods`, {

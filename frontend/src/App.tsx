@@ -14,6 +14,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [presence, setPresence] = useState<Record<string, string[]>>({});
 
   // join state — keep the id and derive the pod so it never goes stale
   const [joinedPodId, setJoinedPodId] = useState<string | null>(null);
@@ -58,6 +59,27 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  // Poll live presence while browsing the pod list (not while joined — PodView
+  // tracks the room live itself).
+  useEffect(() => {
+    if (joinedPodId) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const p = await api.getPresence();
+        if (alive) setPresence(p);
+      } catch {
+        /* presence is best-effort */
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [joinedPodId]);
 
   // Resume a joined session across a page refresh (auto-reconnect, no re-prompt).
   useEffect(() => {
@@ -134,6 +156,20 @@ export default function App() {
     }
   }
 
+  // Add your name to the roster (if new) and join in one step.
+  async function handleAddAndJoin(pod: Pod, name: string) {
+    startPending(pod.id);
+    setError(null);
+    try {
+      upsert(await api.addMember(pod.id, name));
+      await connectToPod(pod.id, name);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      endPending(pod.id);
+    }
+  }
+
   function handleLeave() {
     room?.disconnect();
     setRoom(null);
@@ -203,7 +239,9 @@ export default function App() {
                   key={pod.id}
                   pod={pod}
                   busy={pending.has(pod.id)}
+                  presence={presence[pod.id] ?? []}
                   onJoin={handleJoin}
+                  onAddAndJoin={handleAddAndJoin}
                   onAddMember={handleAddMember}
                   onRemoveMember={handleRemoveMember}
                   onUpdate={handleUpdate}
