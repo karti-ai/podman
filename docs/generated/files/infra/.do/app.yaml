@@ -1,0 +1,60 @@
+name: podman
+region: nyc
+
+static_sites:
+  - name: web
+    github:
+      repo: <org>/Podman
+      branch: main
+      deploy_on_push: true
+    source_dir: frontend
+    build_command: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @podman/shared build && pnpm --filter @podman/frontend build
+    output_dir: dist
+    routes:
+      - path: /
+
+services:
+  - name: api
+    github:
+      repo: <org>/Podman
+      branch: main
+      deploy_on_push: true
+    source_dir: backend
+    build_command: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @podman/shared build && pnpm --filter @podman/backend build
+    run_command: node dist/server.js
+    http_port: 8787
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    routes:
+      - path: /api
+    envs:
+      - { key: LIVEKIT_URL, scope: RUN_TIME, type: SECRET }
+      - { key: LIVEKIT_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: LIVEKIT_API_SECRET, scope: RUN_TIME, type: SECRET }
+      - { key: GITHUB_TOKEN, scope: RUN_TIME, type: SECRET }
+      - { key: GITHUB_REPO, scope: RUN_TIME, value: <org>/<public-repo> }
+      - { key: MONGODB_URI, scope: RUN_TIME, type: SECRET }
+
+workers:
+  - name: podman-agent
+    github:
+      repo: <org>/Podman
+      branch: main
+      deploy_on_push: true
+    source_dir: backend
+    build_command: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @podman/shared build && pnpm --filter @podman/backend build
+    run_command: node dist/agent.js
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    envs:
+      - { key: LIVEKIT_URL, scope: RUN_TIME, type: SECRET }
+      - { key: LIVEKIT_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: LIVEKIT_API_SECRET, scope: RUN_TIME, type: SECRET }
+      - { key: GEMINI_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: GEMINI_VISION_MODEL, scope: RUN_TIME, value: gemini-3.5-flash }
+      - { key: GEMINI_LIVE_MODEL, scope: RUN_TIME, value: gemini-3.1-flash-live-preview }
+      - { key: GITHUB_TOKEN, scope: RUN_TIME, type: SECRET }
+      - { key: GITHUB_REPO, scope: RUN_TIME, value: <org>/<public-repo> }
+      - { key: MONGODB_URI, scope: RUN_TIME, type: SECRET }
+      - { key: VOYAGE_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: POD_ROOM, scope: RUN_TIME, value: demo-pod }
