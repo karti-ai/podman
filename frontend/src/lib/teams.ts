@@ -16,14 +16,14 @@ export const TEAMS: DemoTeam[] = [
     name: 'Demo Pod',
     repo: 'karti-ai/podman',
     description: 'The full crew — used for the live demo.',
-    members: ['Karti', 'Yahya', 'Ramis', 'Zander', 'Shakthi'],
+    members: ['Karti', 'Yahya', 'Ramis', 'Shakthi'],
   },
   {
     id: 'frontend-squad',
     name: 'Frontend Squad',
     repo: 'karti-ai/podman',
     description: 'PWA, capture, and PodMan card UI.',
-    members: ['Karti', 'Zander'],
+    members: ['Karti', 'Ramis'],
   },
   {
     id: 'backend-squad',
