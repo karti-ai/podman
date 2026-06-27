@@ -1,4 +1,4 @@
-import type { DemoTeam } from '../lib/teams.js';
+import type { Pod } from '@podman/shared';
 import { Avatar } from './Avatar.js';
 
 export function PodView({
@@ -7,7 +7,7 @@ export function PodView({
   devMode,
   onLeave,
 }: {
-  team: DemoTeam;
+  team: Pod;
   me: string;
   devMode: boolean;
   onLeave: () => void;

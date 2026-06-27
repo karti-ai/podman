@@ -39,3 +39,4 @@ coverage/
 # Ramis
 .remember/
 .claude/
+.playwright-mcp/

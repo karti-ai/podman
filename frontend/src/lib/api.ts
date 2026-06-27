@@ -1,6 +1,14 @@
-import type { InterventionOutcome } from '@podman/shared';
+import type { InterventionOutcome, Pod, PodInput } from '@podman/shared';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `request failed: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
 
 /** Mint a LiveKit token from the backend. */
 export async function fetchToken(params: {
@@ -14,8 +22,7 @@ export async function fetchToken(params: {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error(`token request failed: ${res.status}`);
-  return res.json() as Promise<{ token: string; url: string }>;
+  return json(res);
 }
 
 /** Record an intervention outcome for the policy learning loop. */
@@ -26,4 +33,56 @@ export async function postOutcome(outcome: InterventionOutcome): Promise<void> {
     body: JSON.stringify(outcome),
   });
   if (!res.ok) throw new Error(`outcome post failed: ${res.status}`);
+}
+
+// --- Pods CRUD ---
+
+export async function listPods(): Promise<Pod[]> {
+  return json(await fetch(`${BACKEND_URL}/api/pods`));
+}
+
+export async function createPod(input: PodInput): Promise<Pod> {
+  return json(
+    await fetch(`${BACKEND_URL}/api/pods`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function updatePod(id: string, patch: PodInput): Promise<Pod> {
+  return json(
+    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+  );
+}
+
+export async function deletePod(id: string): Promise<void> {
+  const res = await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`delete pod failed: ${res.status}`);
+}
+
+export async function addMember(id: string, name: string): Promise<Pod> {
+  return json(
+    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/members`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+  );
+}
+
+export async function removeMember(id: string, name: string): Promise<Pod> {
+  return json(
+    await fetch(
+      `${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/members/${encodeURIComponent(name)}`,
+      { method: 'DELETE' },
+    ),
+  );
 }

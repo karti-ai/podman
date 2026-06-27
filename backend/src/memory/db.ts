@@ -1,5 +1,11 @@
 import { MongoClient, type Db, type Collection } from 'mongodb';
-import type { EngineerContext, Collision, Intervention, InterventionOutcome } from '@podman/shared';
+import type {
+  EngineerContext,
+  Collision,
+  Intervention,
+  InterventionOutcome,
+  Pod,
+} from '@podman/shared';
 import { env } from '../env.js';
 
 let clientPromise: Promise<MongoClient> | null = null;
@@ -19,6 +25,7 @@ export async function getDb(): Promise<Db> {
 }
 
 export interface PodCollections {
+  pods: Collection<Pod>;
   observations: Collection<EngineerContext>;
   collisions: Collection<Collision>;
   interventions: Collection<Intervention>;
@@ -28,6 +35,7 @@ export interface PodCollections {
 export async function collections(): Promise<PodCollections> {
   const db = await getDb();
   return {
+    pods: db.collection<Pod>('pods'),
     observations: db.collection<EngineerContext>('observations'),
     collisions: db.collection<Collision>('collisions'),
     interventions: db.collection<Intervention>('interventions'),
@@ -41,6 +49,7 @@ export async function initMemory(): Promise<void> {
   await db.command({ ping: 1 });
   const c = await collections();
   await Promise.all([
+    c.pods.createIndex({ id: 1 }, { unique: true }),
     c.observations.createIndex({ podId: 1, observedAt: -1 }),
     c.observations.createIndex({ engineerId: 1 }),
     c.collisions.createIndex({ podId: 1, detectedAt: -1 }),

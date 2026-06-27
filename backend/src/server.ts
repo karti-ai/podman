@@ -7,6 +7,16 @@ import { env } from './env.js';
 import { createSyncPr } from './github/client.js';
 import { recordOutcome, memoryStats } from './memory/store.js';
 import { initMemory } from './memory/db.js';
+import {
+  listPods,
+  getPod,
+  createPod,
+  updatePod,
+  deletePod,
+  addMember,
+  removeMember,
+  seedDefaultPods,
+} from './pods/store.js';
 import type { InterventionOutcome } from '@podman/shared';
 
 const app = express();
@@ -54,6 +64,61 @@ app.get('/api/memory/stats', async (_req, res) => {
   }
 });
 
+// --- Pods CRUD (Mongo-backed) ---
+app.get('/api/pods', async (_req, res) => {
+  try {
+    res.json(await listPods());
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post('/api/pods', async (req, res) => {
+  try {
+    res.status(201).json(await createPod(req.body ?? {}));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.get('/api/pods/:id', async (req, res) => {
+  const pod = await getPod(req.params.id);
+  if (!pod) return res.status(404).json({ error: 'pod not found' });
+  res.json(pod);
+});
+
+app.patch('/api/pods/:id', async (req, res) => {
+  try {
+    const pod = await updatePod(req.params.id, req.body ?? {});
+    if (!pod) return res.status(404).json({ error: 'pod not found' });
+    res.json(pod);
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.delete('/api/pods/:id', async (req, res) => {
+  const ok = await deletePod(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'pod not found' });
+  res.json({ ok: true });
+});
+
+app.post('/api/pods/:id/members', async (req, res) => {
+  try {
+    const pod = await addMember(req.params.id, req.body?.name ?? '');
+    if (!pod) return res.status(404).json({ error: 'pod not found' });
+    res.json(pod);
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.delete('/api/pods/:id/members/:name', async (req, res) => {
+  const pod = await removeMember(req.params.id, req.params.name);
+  if (!pod) return res.status(404).json({ error: 'pod not found' });
+  res.json(pod);
+});
+
 const http = createServer(app);
 
 // ws relay: the agent pushes collision/intervention JSON here; PWAs subscribed by pod receive it.
@@ -70,5 +135,7 @@ wss.on('connection', (ws) => {
 
 http.listen(env.PORT, '0.0.0.0', () => {
   console.log(`[server] :${env.PORT}`);
-  initMemory().catch((e) => console.warn(`[memory] init failed: ${(e as Error).message}`));
+  initMemory()
+    .then(() => seedDefaultPods())
+    .catch((e) => console.warn(`[memory] init failed: ${(e as Error).message}`));
 });
