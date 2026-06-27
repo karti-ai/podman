@@ -280,3 +280,29 @@ If two options are close, choose the one with the **better live demo**.
 The team does **not** have time to build a platform.
 The team has time to build **one sharp, memorable, end-to-end loop**.
 Everything should serve that outcome.
+
+***
+
+## Team context — 4 people working simultaneously
+
+This repo is actively used by **4 engineers at the same time**: Karti, Ramis, Yahya, and Zander. Each owns a distinct part of the codebase (see `docs/PLAN.md` for assignments). Claude sessions may be running concurrently across multiple machines.
+
+### What this means for how you help
+
+- **Scope responses to the person's assigned area.** If Ramis asks about the vision pipeline, do not suggest touching the MongoDB layer — that's Karti's lane. Only cross lanes when explicitly asked.
+- **Never suggest refactoring another person's code** without the user flagging that they've coordinated. Assume other files are actively being edited.
+- **Treat integration points as contracts, not suggestions.** The shared types in `shared/src/` and the API shape of `POST /ingest`, `GET /pods/:podId/token`, and `GET /pods/:podId/state` are the interface between owners — do not change their signatures unilaterally.
+- **When proposing new files**, confirm they don't collide with another person's current work by checking `docs/PLAN.md` for ownership.
+- **Flag merge risk explicitly** when a change touches a file that multiple people might edit (e.g., `backend/src/index.ts`, `frontend/src/App.tsx`).
+- **Prefer additive changes** — new files, new functions — over modifying existing ones when possible. This minimizes merge conflicts.
+- **If unsure whose territory something is**, say so and recommend the person check with the relevant teammate before proceeding.
+
+### Ownership map (from docs/PLAN.md)
+
+| Area | Owner |
+|---|---|
+| MongoDB layer, DO deploy, env setup | Karti |
+| Gemini Vision pipeline, `/ingest` endpoint | Ramis |
+| Event detector, nudge generator, cooldown logic | Yahya |
+| PWA frame capture, active session UI | Zander |
+| Gemini Live 2.5 + LiveKit Agents voice wiring | Everyone |
