@@ -7,52 +7,58 @@
 
 ## What we are building
 
-Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures their screen every 30s and POSTs it to **Hermes** (server-side orchestrator on DigitalOcean). Hermes calls Gemini Vision to extract structured context per engineer, detects coordination events, generates a spoken nudge, and publishes it into the LiveKit room via Gemini Live 2.5. MongoDB Atlas stores state and an ownership map that persists across sessions.
+Engineers join a LiveKit room with earbuds. The PodMan agent (`backend/src/agent.ts`) subscribes to each engineer's screen-share track, samples frames at ~1fps, calls Gemini Vision, detects collisions, and publishes interventions via LiveKit data channel + voice. MongoDB Atlas stores observations, collisions, interventions, and outcomes — persisting across sessions for continual learning.
+
+**Actual architecture (differs from original spec):** Screen frames flow through the LiveKit room (agent subscribes to screen tracks), not via HTTP POST /ingest from the PWA. The agent runs as a separate process (`pnpm dev:agent`). The HTTP server handles token minting, pods CRUD, memory stats, and outcome recording.
 
 **Demo:** Alice builds auth endpoint. Carol is blocked. PodMan notices, warns Carol. Alice's server starts. PodMan tells Carol and Bob they're clear to integrate. No Slack. No asking.
+
+---
+
+## Status legend
+- ✅ Done and deployed on server
+- ⚠️ Partial — code exists, needs work
+- ❌ Not started
 
 ---
 
 ## Critical path — must ship for demo
 
 ### 1. Environment + health check
-**Est:** 1h | **Blocks:** everything
+**Status: ✅ Done**
 
-- [ ] All `.env` vars populated: `LIVEKIT_*`, `GEMINI_API_KEY`, `MONGODB_URI`
-- [ ] `GET /health` returns `{ ok: true, service: 'podman-backend' }` *(already implemented)*
-- [ ] MongoDB connection established in `backend/src/db.ts` — export `db` instance
-- [ ] `POST /ingest` stub returns `{ ok: true }` (no logic yet — unblocks parallel work)
+- [x] `GET /health` returns `{ ok: true }` — live at `http://165.22.129.249:8787/health`
+- [x] MongoDB connection established in `backend/src/memory/db.ts` — `collections()` export
+- [x] Pods CRUD: `GET/POST /api/pods`, `GET/DELETE /api/pods/:id`, `POST/DELETE /api/pods/:id/members`
+- [x] Backend running in tmux on DO droplet (`pnpm dev` via `tsx watch src/server.ts`)
+- [ ] Root `.env` not present — `backend/.env` has creds, sufficient for current setup
 
-**Files:** `backend/src/db.ts` (new), `backend/src/index.ts` (add `/ingest` stub)
+**Actual files:** `backend/src/memory/db.ts`, `backend/src/server.ts`, `backend/src/env.ts`
 
 ---
 
 ### 2. PWA frame capture
-**Est:** 1.5h | **Depends on:** task 1 stub
+**Status: ✅ Done (different approach than originally planned)**
 
-- [ ] After joining pod, start capture loop: `setInterval` every 30s
-- [ ] `getDisplayMedia` already running — grab frame from existing screen track via `ImageBitmap` → `OffscreenCanvas` → `toBlob('image/jpeg', 0.7)`
-- [ ] Downscale to max 1280×720 before encoding
-- [ ] `POST /ingest` with `{ engineerId, podId, screenshotBase64, capturedAt }`
-- [ ] Stop loop on disconnect
+Original plan: PWA captures JPEG every 30s → POST /ingest. Actual: PWA publishes screen as LiveKit video track → agent subscribes and samples at ~1fps using `livekit-client-node` + `sharp`.
 
-**Files:** `frontend/src/lib/capture.ts` (new), `frontend/src/lib/pod.ts` (start capture after connect)
+- [x] `frontend/src/lib/pod.ts` — `joinPod()` connects to LiveKit, publishes screen + mic
+- [x] `backend/src/agent.ts` — subscribes to `SOURCE_SCREENSHARE` tracks, throttles at `SAMPLE_INTERVAL_MS`
+- [x] Resize to max 1280px wide, JPEG quality 70 via `sharp`
+- [x] Dev mock-join fallback when LiveKit unconfigured
+- [x] `frontend/src/livekit/useScreenPublish.ts` — React hook for screen track
+
+**Actual files:** `backend/src/agent.ts`, `frontend/src/lib/pod.ts`, `frontend/src/livekit/useScreenPublish.ts`
 
 ---
 
 ### 2b. Local git watcher script
-**Est:** 1.5h | **Depends on:** task 1, task 3 (schema)
+**Status: ❌ Not started**
 
-A tiny Node.js script each engineer runs once in a terminal on their machine. Writes git signals **directly to MongoDB Atlas** every 15s — no HTTP to Hermes. Hermes reads merged state (vision + git) from Atlas when running event detection.
-
-- [ ] `scripts/podman-agent.mjs` — CLI script, no extra dependencies beyond Node.js + `mongodb` driver
-- [ ] Args: `--name alice --pod demo-pod` (reads `MONGODB_URI` from env or `.env` in repo root)
-- [ ] Every 15s: shell out to `git status --short`, `git diff --stat HEAD`, `git log --oneline -1`, `git branch --show-current`
-- [ ] Upsert into `engineer_states` (same collection as vision pipeline) — update only git fields, leave vision fields untouched:
-  ```ts
-  { $set: { changedFiles, diffStat, recentCommit, branch, gitUpdatedAt } }
-  ```
-- [ ] On startup: log `[podman-agent] alice connected to demo-pod — watching git every 15s`
+- [ ] `scripts/podman-agent.mjs` — CLI script polling git every 15s, writing to MongoDB
+- [ ] Args: `--name alice --pod demo-pod`
+- [ ] Every 15s: `git status --short`, `git diff --stat HEAD`, `git log --oneline -1`, `git branch --show-current`
+- [ ] Upsert into `observations` collection — update only git fields, leave vision fields untouched
 - [ ] Graceful exit on Ctrl+C
 
 **Usage:**
@@ -60,124 +66,135 @@ A tiny Node.js script each engineer runs once in a terminal on their machine. Wr
 node scripts/podman-agent.mjs --name alice --pod demo-pod
 ```
 
-**Why MongoDB-direct (not POST /ingest):** git signals and vision signals update at different rates and from different sources. MongoDB is the shared state bus — Hermes reads merged state, not two separate streams.
-
 **Files:** `scripts/podman-agent.mjs` (new)
 
 ---
 
 ### 3. MongoDB state layer
-**Est:** 1.5h | **Depends on:** task 1
+**Status: ✅ Done (different collection names than originally planned)**
 
-- [ ] `engineer_states` upsert: `db.collection('engineer_states').updateOne({ _id: engineerId }, { $set: ctx }, { upsert: true })`
-- [ ] `ownership_map` upsert: called after each state write where `currentFile` is non-null
-- [ ] `events` insert function
-- [ ] `nudges` insert function + cooldown query (find any nudge for same `podId` in last `NUDGE_COOLDOWN_MS`)
-- [ ] Load `ownership_map` on Hermes startup → build `Map<file, { primaryOwner, contributors }>`
+- [x] `observations` — `recordObservation(ctx: EngineerContext)` 
+- [x] `collisions` — `recordCollision(collision: Collision)`
+- [x] `interventions` — `recordIntervention(intervention: Intervention)`
+- [x] `outcomes` — `recordOutcome(outcome: InterventionOutcome)`
+- [x] `memoryStats()` — count per collection, exposed via `GET /api/memory/stats`
+- [x] Vector recall: `recallSimilar(collision)` in `backend/src/memory/vectors.ts`
+- [x] Policy gate: `shouldIntervene(collision, prior)` in `backend/src/memory/policy.ts`
 
-**Files:** `backend/src/db/states.ts`, `backend/src/db/ownership.ts`, `backend/src/db/events.ts`, `backend/src/db/nudges.ts` (all new)
+**Actual files:** `backend/src/memory/db.ts`, `backend/src/memory/store.ts`, `backend/src/memory/policy.ts`, `backend/src/memory/vectors.ts`
 
 ---
 
 ### 4. Gemini Vision pipeline
-**Est:** 2h | **Depends on:** tasks 1, 3
+**Status: ✅ Done**
 
-Wire `POST /ingest` fully:
+- [x] `analyzeFrame(engineerId, podId, jpeg)` calls `gemini-2.0-flash` with structured JSON schema
+- [x] Extracts: `currentFile`, `currentSymbol`, `activity`, `hasUnpushedChanges`, `confidence`
+- [x] Low media resolution for speed, zero thinking budget
+- [x] Called from `agent.ts` → `podman.onScreenFrame()` → `analyzeFrame()` → `recordObservation()`
+- [x] Collision detection runs after every frame: `detectCollisions([...contexts], github)`
 
-- [ ] Receive `{ engineerId, podId, screenshotBase64, capturedAt }`
-- [ ] Call `gemini-2.0-flash` with vision prompt (see `docs/gemini.md`) — inline image as base64
-- [ ] Parse JSON response into `EngineerContext`
-- [ ] Apply confidence gate: if `confidence < 0.6` → log and return early, no DB write
-- [ ] On pass: call state upsert (task 3) → upsert `engineer_states` + `ownership_map`
-- [ ] Trigger event detection (task 5) after every successful write
-
-**Files:** `backend/src/vision/gemini.ts` (implement — currently stubbed), `backend/src/index.ts` (wire `/ingest` fully)
+**Actual files:** `backend/src/vision/gemini.ts`, `backend/src/agent/podman.ts`
 
 ---
 
 ### 5. Event detector + nudge generator
-**Est:** 2h | **Depends on:** tasks 3, 4
+**Status: ✅ Done (collision-based, not Gemini-event-detection-based)**
 
-- [ ] After each state write, fetch all `engineer_states` for the pod (only docs updated in last 2 min — stale engineers ignored)
-- [ ] Call `gemini-2.0-flash` with event detection prompt (see `docs/gemini.md`) — pass all states + ownership map as JSON
-- [ ] Parse `{ event, involvedEngineers, file, reason }` — if `event` is null, stop
-- [ ] Check cooldown: query `nudges` for any sent in last `NUDGE_COOLDOWN_MS` for this pod — if found, skip
-- [ ] Call `gemini-2.0-flash` with nudge generation prompt → get 1–2 sentence message
-- [ ] Write event to `events` collection
-- [ ] Pass message to voice publisher (task 6)
-- [ ] Write nudge to `nudges` collection after sent
-- [ ] Also publish data channel message for frontend card
+- [x] `detectCollisions()` — groups engineers by normalized file path, flags when 2+ editing same file with unpushed changes
+- [x] `shouldIntervene()` + `preferredAction()` policy gate (prevents spam)
+- [x] `recallSimilar()` — vector recall elevates severity if prior collision on same file
+- [x] Generates intervention message string (inline, not via Gemini call)
+- [x] Publishes `{ type: 'COLLISION', collision, intervention }` via data channel
+- [x] Calls `speak(room, message)` (currently stub — just logs)
+- [ ] Cooldown per pod not yet implemented (policy gate provides some protection)
 
-**Files:** `backend/src/event/detector.ts` (new), `backend/src/intervention/engine.ts` (implement — currently stubbed)
+**Actual files:** `backend/src/collision/detector.ts`, `backend/src/agent/podman.ts`, `backend/src/memory/policy.ts`
 
 ---
 
-### 6. Gemini Live 2.5 voice via LiveKit Agents
-**Est:** 2h | **Depends on:** tasks 1, 5
+### 6. Voice via LiveKit
+**Status: ⚠️ Partial — agent structure done, voice is a stub**
 
-Highest integration risk — do as a team.
+- [x] `backend/src/agent.ts` — full LiveKit agent: joins room, subscribes to screen tracks, 1fps sampling
+- [x] `backend/src/voice/live.ts` — `speak(room, message)` function wired into pipeline
+- [x] `room.localParticipant.publishData()` — data channel publish working
+- [ ] `speak()` is a stub — logs message but does NOT produce audio
+- [ ] Gemini Live 2.5 audio streaming not implemented
+- [ ] **Agent not started on server** — `start-podman.sh` has it commented out; needs `pnpm dev:agent` + real LiveKit creds
 
-- [ ] Add LiveKit Agents SDK to backend (`@livekit/agents` or `livekit-server-sdk` agent support — confirm package)
-- [ ] Hermes joins each active pod room as `podman-hermes` on first `/ingest` for that pod
-- [ ] Wire Gemini Live 2.5 as voice provider (confirm model ID: `gemini-live-2.5-flash`)
-- [ ] On nudge ready: pass text to Gemini Live → stream audio into room
-- [ ] Also call `room.localParticipant.publishData(nudgePayload, { reliable: true })` for frontend card
-- [ ] Fallback if Gemini Live fails: `@google/genai` TTS → WAV buffer → publish as audio track manually
+**To unblock:** Implement real TTS in `speak()` (Gemini TTS → WAV → publish audio track), then uncomment agent window in `start-podman.sh`.
 
-**Files:** `backend/src/livekit/agent.ts` (new), `backend/src/intervention/engine.ts` (wire voice out)
+**Actual files:** `backend/src/voice/live.ts`, `backend/src/agent.ts`, `backend/src/agent/podman.ts`
 
 ---
 
 ### 7. PWA active session UI
-**Est:** 1.5h | **Depends on:** tasks 2, 6
+**Status: ❌ Not started**
 
-- [ ] Active session screen (post-join — replace current "Connected" placeholder)
-- [ ] Teammate status cards: name, inferred file, inferred task — polled from backend via `GET /pods/:podId/state` or updated via data channel
-- [ ] Data channel listener: on `RoomEvent.DataReceived` from `podman-hermes` → parse nudge → append to feed
-- [ ] Nudge feed: last 5 nudges, timestamped, engineer names highlighted
-- [ ] "PodMan is watching" indicator + frame capture active badge
+- [ ] `frontend/src/components/SessionView.tsx` — active session screen post-join
+- [ ] Teammate status cards (name, inferred file, inferred task)
+- [ ] `RoomEvent.DataReceived` listener for collision/intervention messages from agent
+- [ ] Nudge feed: last 5 interventions, timestamped
+- [ ] "PodMan is watching" indicator
 
-**Files:** `frontend/src/components/SessionView.tsx` (new), `frontend/src/App.tsx` (render SessionView post-join)
+**Depends on:** Task 6 (agent producing data channel messages — working even without voice)
+
+**Files:** `frontend/src/components/SessionView.tsx` (new), `frontend/src/App.tsx` (wire post-join)
 
 ---
 
 ## Cut line — below here only if tasks 1–7 done before hour 10
 
 ### 8. Ownership warm-start demo
-**Est:** 1h | **Depends on:** task 3
-
-- [ ] On Hermes startup: log "Loading session memory for pod X — N files known"
-- [ ] Ownership cache pre-populated before first frame arrives
-- [ ] Demo: session 1 cold (3 min), session 2 warm (< 30s) — visible in logs + timing
+**Status: ⚠️ Partial — memory persists, no warm-start logging**
+- [ ] On agent startup: log "Loading session memory for pod X — N collisions known"
+- [ ] Demo: session 1 cold, session 2 faster — visible in logs
 
 ---
 
-### 9. `DUPLICATE_WORK` event type
-**Est:** 0.5h | **Depends on:** task 5
-
-- [ ] Add to event detection prompt — already supported, just needs testing + nudge template
+### 9. GitHub-enriched collision detection
+**Status: ⚠️ Exists but may not be needed for demo**
+- `backend/src/github/client.ts` exists — fetches PR state as `GithubStateSnapshot`
+- Not required for the demo since screen-based `hasUnpushedChanges` is sufficient
 
 ---
 
 ### 10. Backend state endpoint
-**Est:** 0.5h | **Depends on:** task 3
+**Status: ✅ Done (as pods API)**
+- `GET /api/pods` — returns all pods
+- `GET /api/pods/:id` — returns pod with members
+- No per-engineer state endpoint yet (frontend uses data channel instead)
 
-- [ ] `GET /pods/:podId/state` → returns all `engineer_states` for the pod
-- [ ] Used by PWA to populate teammate status cards (alternative to data channel push)
+---
+
+## What needs to happen next (priority order)
+
+1. **Voice (Task 6)** — implement real `speak()` with Gemini TTS → WAV → LiveKit audio track
+2. **Session UI (Task 7)** — `SessionView.tsx` with data channel listener + nudge feed
+3. **Start agent on server** — uncomment agent window in `start-podman.sh`, ensure LiveKit creds in `backend/.env`
+4. **Git watcher (Task 2b)** — `scripts/podman-agent.mjs` for demo terminals
+
+---
+
+## Server state (165.22.129.249)
+
+- Backend: ✅ running on `:8787` (tmux `podman:backend`)
+- Frontend: ✅ running on `:81` (tmux `podman:prod`, port 80 taken)
+- Agent: ❌ NOT running — needs LiveKit creds + `pnpm dev:agent`
+- To start agent: `tmux new-window -t podman -n agent && tmux send-keys -t podman:agent 'cd /root/podman && pnpm --filter @podman/backend dev:agent' C-m`
+- To attach: `ssh root@165.22.129.249` → `tmux attach -t podman`
 
 ---
 
 ## Cut immediately
 
-- VS Code extension
-- Mic transcription or voice input
+- Mic transcription or voice input from engineers
 - Manual task input fields on PWA
 - Multilingual voice
-- GitHub API integration
 - Slack / Linear / Jira integrations
 - Webcam tracks
-- Voyage vector embeddings (plain MongoDB lookups sufficient for v1)
-- Always-on raw screen surveillance (30s sampling is by design)
+- Always-on raw screen surveillance (1fps sampling is by design)
 - Full task management features
 - User auth / accounts
 
@@ -187,32 +204,30 @@ Highest integration risk — do as a team.
 
 | Risk | Mitigation |
 |---|---|
-| Gemini Vision accuracy on screens | Large font (18pt+), single editor window, file tab fully visible. Confidence gate drops bad frames. |
-| Gemini Live 2.5 + LiveKit Agents unknown territory | Build together (task 6). Fallback: Gemini TTS → WAV → publish manually as audio track. |
-| Frame POST latency | JPEG quality 0.7, max 1280×720. Target < 500ms round trip. |
-| Event detection false positives | 3-min cooldown per pod. Demo is pre-staged so events fire cleanly. |
-| DO deploy fails on stage | Run Hermes local. PWA defaults to `localhost:8787` automatically. |
-| Multiple events fire at once | Cooldown + event deduplication: same file + same engineers within 1 min → skip |
+| Gemini Vision accuracy on screens | Large font (18pt+), single editor window, file tab fully visible. |
+| Gemini Live TTS not implemented | Fallback: `@google/genai` TTS → WAV buffer → publish as audio track manually. |
+| Agent needs HTTPS for screen capture | Demo from localhost or ngrok. PWA has dev mock-join fallback. |
+| Event detection false positives | Policy gate in `shouldIntervene()`. Demo is pre-staged so collisions fire cleanly. |
+| DO deploy: frontend on :81 not :80 | Port 80 taken — either kill the process or update DNS/proxy to :81. |
+| Multiple collisions fire at once | Policy gate prevents spam; same-collision dedup via file+engineers key. |
 
 ---
 
 ## Demo script (3 min)
 
-**(0:00)** Three laptops visible. Alice, Bob, Carol join `demo-pod` via PWA. PodMan: *"PodMan online. I see Alice, Bob, and Carol. Let's build."*
+**(0:00)** Three laptops visible. Alice, Bob, Carol join `demo-pod` via PWA. Agent logs `[agent] PodMan joined room demo-pod`.
 
-**(0:20)** Alice opens `auth/middleware.ts` (18pt font, clearly visible). First frame processed. Ownership map: Alice → auth.
+**(0:20)** Alice opens `auth/middleware.ts` (18pt font, clearly visible). First frame processed. `[vision] currentFile: auth/middleware.ts`.
 
-**(0:45)** Bob opens `frontend/login.tsx`. Carol runs `curl http://localhost:3001/auth` → `connection refused`.
+**(0:45)** Bob opens `auth/middleware.ts` too. Carol runs `curl http://localhost:3001/auth` → `connection refused`.
 
-**(1:20) MONEY MOMENT 1 — BLOCKER_DETECTED:**
-PodMan: *"Carol, looks like you're waiting on the auth endpoint. Alice is actively building it in middleware.ts — hang tight."*
+**(1:20) MONEY MOMENT 1 — COLLISION_DETECTED:**
+PodMan data channel message fires: *"alice and bob are both editing auth/middleware.ts and one has unpushed changes."*
+Voice says it aloud in the room.
 
-**(1:50)** Alice starts her server. Terminal shows `Server running on :3001`.
+**(1:50)** Alice pushes. Bob pulls. Carol's integration unblocks.
 
-**(2:00) MONEY MOMENT 2 — DEPENDENCY_READY:**
-PodMan: *"Carol, Bob — Alice just got the auth endpoint running. You're clear to integrate."*
-
-**(2:20)** Optional: show session 2 — Hermes logs "Session memory loaded — 3 files known." First nudge in 28s vs 3min in session 1.
+**(2:20)** Show `GET /api/memory/stats` → `{ observations: 47, collisions: 1, interventions: 1, outcomes: 0 }`. Session 2 warm-start: collision detected in 12s vs 3min cold.
 
 **(2:45)** Close: *"PodMan — the teammate that sees what Slack can't."*
 
@@ -222,9 +237,10 @@ PodMan: *"Carol, Bob — Alice just got the auth endpoint running. You're clear 
 
 See `docs/demo-setup.md` for full laptop setup. Key items:
 
-- [ ] All 3 laptops: font 18pt+, single editor window, file tab visible
-- [ ] `demo-pod` created in LiveKit Cloud
-- [ ] Hermes `/health` returns OK on deployed URL
+- [ ] All laptops: font 18pt+, single editor window, file tab visible
+- [ ] `demo-pod` created in LiveKit Cloud, creds in `backend/.env`
+- [ ] Agent running: `tmux attach -t podman` → check `agent` window
+- [ ] `GET /health` returns OK on deployed URL
 - [ ] Earbuds tested — voice audible through browser
 - [ ] Backup video recorded and on separate device
 - [ ] Demo rehearsed 3×
