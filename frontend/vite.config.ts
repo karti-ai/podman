@@ -7,17 +7,10 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      manifest: {
-        name: 'PodMan',
-        short_name: 'PodMan',
-        description: 'Ambient AI teammate that prevents merge collisions before push',
-        theme_color: '#0b0f17',
-        background_color: '#0b0f17',
-        display: 'standalone',
-      },
-    }),
+    // Self-destroying during active development: unregisters any previously
+    // installed service worker and clears its caches so deploys are always
+    // fresh (no stale UI). Re-enable a precaching PWA before the demo.
+    VitePWA({ selfDestroying: true }),
   ],
   server: {
     port: 5173,
