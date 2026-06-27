@@ -1,152 +1,216 @@
-# PodMan — Build Plan (12 hours)
+# PodMan — Implementation Plan (12 hours)
 
-> Replaces the original v1 plan. Architecture finalized. See `docs/idea.md` for concept, individual integration specs for details.
+> Architecture locked. See `docs/idea.md` for concept, integration specs for details.
+> Tasks ordered by dependency and demo criticality. Never cut items above the cut line.
 
 ---
 
 ## What we are building
 
-PodMan is a real-time AI team coordination agent. Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures their screen every 30s and sends it to Hermes (server-side orchestrator). Hermes uses Gemini Vision to extract structured context, detects coordination events (dependency ready, blocker, duplicate work), and speaks proactive nudges into the room via Gemini Live 2.5. MongoDB Atlas stores team state and an ownership map that persists across sessions — making PodMan faster and smarter each session.
+Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures their screen every 30s and POSTs it to **Hermes** (server-side orchestrator on DigitalOcean). Hermes calls Gemini Vision to extract structured context per engineer, detects coordination events, generates a spoken nudge, and publishes it into the LiveKit room via Gemini Live 2.5. MongoDB Atlas stores state and an ownership map that persists across sessions.
 
-**Hero demo moment:** PodMan detects Carol is blocked waiting for Alice's auth endpoint, warns Carol, then notifies Carol and Bob the moment Alice's server starts — without anyone sending a message.
-
----
-
-## Must-have demo path
-
-The minimum end-to-end flow required for a winning demo:
-
-1. 3 engineers join a pod room via PWA (browser tab)
-2. PWA captures screen frame every 30s, POSTs to Hermes
-3. Hermes calls Gemini Vision → extracts `{ currentFile, inferredTask, confidence }`
-4. Hermes writes to MongoDB (`engineer_states`, `ownership_map`)
-5. Hermes runs event detection across all 3 engineers
-6. `BLOCKER_DETECTED` or `DEPENDENCY_READY` event fires
-7. Hermes generates 1–2 sentence nudge via Gemini
-8. Hermes speaks nudge into LiveKit room via Gemini Live 2.5
-9. Engineers hear it through earbuds
-10. Frontend shows live nudge feed (data channel card)
+**Demo:** Alice builds auth endpoint. Carol is blocked. PodMan notices, warns Carol. Alice's server starts. PodMan tells Carol and Bob they're clear to integrate. No Slack. No asking.
 
 ---
 
-## Nice-to-have (only if steps 1–10 done before hour 10)
+## Critical path — must ship for demo
 
-- `DUPLICATE_WORK` event detection
-- Ownership map cold-start demo (session 2 is visibly faster)
-- GitHub state fusion (open PRs/branches per file)
-- Polish: teammate status cards in UI, confidence indicator
+### 1. Environment + health check
+**Owner:** Karti | **Est:** 1h | **Blocks:** everything
+
+- [ ] All `.env` vars populated: `LIVEKIT_*`, `GEMINI_API_KEY`, `MONGODB_URI`
+- [ ] `GET /health` returns `{ ok: true, service: 'podman-backend' }` *(already implemented)*
+- [ ] MongoDB connection established in `backend/src/db.ts` — export `db` instance
+- [ ] `POST /ingest` stub returns `{ ok: true }` (no logic yet — unblocks parallel work)
+
+**Files:** `backend/src/db.ts` (new), `backend/src/index.ts` (add `/ingest` stub)
+
+---
+
+### 2. PWA frame capture
+**Owner:** Zander | **Est:** 1.5h | **Depends on:** task 1 stub
+
+- [ ] After joining pod, start capture loop: `setInterval` every 30s
+- [ ] `getDisplayMedia` already running — grab frame from existing screen track via `ImageBitmap` → `OffscreenCanvas` → `toBlob('image/jpeg', 0.7)`
+- [ ] Downscale to max 1280×720 before encoding
+- [ ] `POST /ingest` with `{ engineerId, podId, screenshotBase64, capturedAt }`
+- [ ] Stop loop on disconnect
+
+**Files:** `frontend/src/lib/capture.ts` (new), `frontend/src/lib/pod.ts` (start capture after connect)
+
+---
+
+### 3. MongoDB state layer
+**Owner:** Karti | **Est:** 1.5h | **Depends on:** task 1
+
+- [ ] `engineer_states` upsert: `db.collection('engineer_states').updateOne({ _id: engineerId }, { $set: ctx }, { upsert: true })`
+- [ ] `ownership_map` upsert: called after each state write where `currentFile` is non-null
+- [ ] `events` insert function
+- [ ] `nudges` insert function + cooldown query (find any nudge for same `podId` in last `NUDGE_COOLDOWN_MS`)
+- [ ] Load `ownership_map` on Hermes startup → build `Map<file, { primaryOwner, contributors }>`
+
+**Files:** `backend/src/db/states.ts`, `backend/src/db/ownership.ts`, `backend/src/db/events.ts`, `backend/src/db/nudges.ts` (all new)
+
+---
+
+### 4. Gemini Vision pipeline
+**Owner:** Ramis | **Est:** 2h | **Depends on:** tasks 1, 3
+
+Wire `POST /ingest` fully:
+
+- [ ] Receive `{ engineerId, podId, screenshotBase64, capturedAt }`
+- [ ] Call `gemini-2.0-flash` with vision prompt (see `docs/gemini.md`) — inline image as base64
+- [ ] Parse JSON response into `EngineerContext`
+- [ ] Apply confidence gate: if `confidence < 0.6` → log and return early, no DB write
+- [ ] On pass: call state upsert (task 3) → upsert `engineer_states` + `ownership_map`
+- [ ] Trigger event detection (task 5) after every successful write
+
+**Files:** `backend/src/vision/gemini.ts` (implement — currently stubbed), `backend/src/index.ts` (wire `/ingest` fully)
+
+---
+
+### 5. Event detector + nudge generator
+**Owner:** Yahya | **Est:** 2h | **Depends on:** tasks 3, 4
+
+- [ ] After each state write, fetch all `engineer_states` for the pod (only docs updated in last 2 min — stale engineers ignored)
+- [ ] Call `gemini-2.0-flash` with event detection prompt (see `docs/gemini.md`) — pass all states + ownership map as JSON
+- [ ] Parse `{ event, involvedEngineers, file, reason }` — if `event` is null, stop
+- [ ] Check cooldown: query `nudges` for any sent in last `NUDGE_COOLDOWN_MS` for this pod — if found, skip
+- [ ] Call `gemini-2.0-flash` with nudge generation prompt → get 1–2 sentence message
+- [ ] Write event to `events` collection
+- [ ] Pass message to voice publisher (task 6)
+- [ ] Write nudge to `nudges` collection after sent
+- [ ] Also publish data channel message for frontend card
+
+**Files:** `backend/src/event/detector.ts` (new), `backend/src/intervention/engine.ts` (implement — currently stubbed)
+
+---
+
+### 6. Gemini Live 2.5 voice via LiveKit Agents
+**Owner:** Everyone | **Est:** 2h | **Depends on:** tasks 1, 5
+
+Highest integration risk — do as a team.
+
+- [ ] Add LiveKit Agents SDK to backend (`@livekit/agents` or `livekit-server-sdk` agent support — confirm package)
+- [ ] Hermes joins each active pod room as `podman-hermes` on first `/ingest` for that pod
+- [ ] Wire Gemini Live 2.5 as voice provider (confirm model ID: `gemini-live-2.5-flash`)
+- [ ] On nudge ready: pass text to Gemini Live → stream audio into room
+- [ ] Also call `room.localParticipant.publishData(nudgePayload, { reliable: true })` for frontend card
+- [ ] Fallback if Gemini Live fails: `@google/genai` TTS → WAV buffer → publish as audio track manually
+
+**Files:** `backend/src/livekit/agent.ts` (new), `backend/src/intervention/engine.ts` (wire voice out)
+
+---
+
+### 7. PWA active session UI
+**Owner:** Zander | **Est:** 1.5h | **Depends on:** tasks 2, 6
+
+- [ ] Active session screen (post-join — replace current "Connected" placeholder)
+- [ ] Teammate status cards: name, inferred file, inferred task — polled from backend via `GET /pods/:podId/state` or updated via data channel
+- [ ] Data channel listener: on `RoomEvent.DataReceived` from `podman-hermes` → parse nudge → append to feed
+- [ ] Nudge feed: last 5 nudges, timestamped, engineer names highlighted
+- [ ] "PodMan is watching" indicator + frame capture active badge
+
+**Files:** `frontend/src/components/SessionView.tsx` (new), `frontend/src/App.tsx` (render SessionView post-join)
+
+---
+
+## Cut line — below here only if hours 1–7 done before hour 10
+
+### 8. Ownership warm-start demo
+**Owner:** Karti | **Est:** 1h | **Depends on:** task 3
+
+- [ ] On Hermes startup: log "Loading session memory for pod X — N files known"
+- [ ] Ownership cache pre-populated before first frame arrives
+- [ ] Demo: session 1 cold (3 min), session 2 warm (< 30s) — visible in logs + timing
+
+---
+
+### 9. `DUPLICATE_WORK` event type
+**Owner:** Yahya | **Est:** 0.5h | **Depends on:** task 5
+
+- [ ] Add to event detection prompt — already supported, just needs testing + nudge template
+
+---
+
+### 10. Backend state endpoint
+**Owner:** Karti | **Est:** 0.5h | **Depends on:** task 3
+
+- [ ] `GET /pods/:podId/state` → returns all `engineer_states` for the pod
+- [ ] Used by PWA to populate teammate status cards (alternative to data channel push)
 
 ---
 
 ## Cut immediately
 
 - VS Code extension
-- Mic transcription
-- Manual task input fields
+- Mic transcription or voice input
+- Manual task input fields on PWA
 - Multilingual voice
-- Full task management
-- Slack / Linear integrations
+- GitHub API integration
+- Slack / Linear / Jira integrations
 - Webcam tracks
-- Always-on raw screen surveillance (we sample every 30s by design)
+- Voyage vector embeddings (plain MongoDB lookups sufficient for v1)
+- Always-on raw screen surveillance (30s sampling is by design)
+- Full task management features
+- User auth / accounts
 
 ---
 
-## Team assignments
+## Team assignments summary
 
-| Person | Owns | Hours |
+| Person | Primary tasks | Hours |
 |---|---|---|
-| **Karti** | MongoDB Atlas wiring, `engineer_states` + `ownership_map` upsert logic, DO deploy, `/health` + env setup | 3–4h |
-| **Ramis** | `POST /ingest` endpoint, Gemini Vision pipeline (`frameToContext`), confidence gate, frame compression in PWA | 3–4h |
-| **Yahya** | Event detector (all 3 event types), nudge generator (Gemini text), cooldown logic, event + nudge MongoDB writes | 3–4h |
-| **Everyone** | Gemini Live 2.5 + LiveKit Agents wiring (Hermes joins room + publishes voice) — highest integration risk, do together | 2h |
+| **Karti** | 1 (env + health), 3 (MongoDB layer), 10 (state endpoint) | ~3–4h |
+| **Ramis** | 4 (Gemini Vision pipeline), part of 2 (capture help) | ~3h |
+| **Yahya** | 5 (event detector + nudge generator), 9 (duplicate work) | ~3h |
+| **Zander** | 2 (PWA frame capture), 7 (active session UI) | ~3h |
+| **Everyone** | 6 (Gemini Live + LiveKit Agents voice) | ~2h |
 
 ---
 
-## Build order (strictly sequential by dependency)
-
-### Hour 0–1: Plumbing (Karti)
-- [ ] Confirm `.env` vars populated: `LIVEKIT_*`, `GEMINI_API_KEY`, `MONGODB_URI`
-- [ ] `GET /health` returns `{ ok: true }`
-- [ ] MongoDB connection established, collections initialized
-- [ ] `POST /ingest` stub returns `{ ok: true }` (no logic yet)
-
-### Hour 1–3: Frame capture + Vision pipeline (Ramis)
-- [ ] PWA: `getDisplayMedia` frame capture every 30s → JPEG base64 (1280×720 max, quality 0.7)
-- [ ] PWA: `POST /ingest` with `{ engineerId, podId, screenshotBase64, capturedAt }`
-- [ ] Hermes: wire `@google/genai`, call `gemini-2.0-flash` with vision prompt
-- [ ] Hermes: parse response, apply confidence gate (< 0.6 → discard)
-- [ ] Hermes: upsert `engineer_states` in MongoDB
-
-### Hour 1–3: MongoDB state layer (Karti, parallel with Ramis)
-- [ ] `engineer_states` upsert function
-- [ ] `ownership_map` upsert function (called after each `engineer_states` write)
-- [ ] `events` insert function
-- [ ] `nudges` insert function + cooldown query
-
-### Hour 3–5: Event detection + nudge generation (Yahya)
-- [ ] Hermes: after each state write, fetch all `engineer_states` for the pod
-- [ ] Run Gemini event detection prompt → parse `{ event, involvedEngineers, file, reason }`
-- [ ] On non-null event: check cooldown, generate nudge message via Gemini
-- [ ] Write event + nudge to MongoDB
-- [ ] Log to console (voice wiring comes next)
-
-### Hour 3–5: PWA active session UI (Zander, parallel)
-- [ ] Active session screen (post-join): "PodMan is watching" + teammate status cards
-- [ ] Data channel listener: append nudge to live feed on receive
-- [ ] Nudge feed: last 5 nudges, timestamped, engineer names highlighted
-
-### Hour 5–7: Gemini Live 2.5 + LiveKit Agents voice (everyone)
-- [ ] Install LiveKit Agents SDK in backend
-- [ ] Hermes joins pod room as `podman-hermes` participant on startup
-- [ ] Wire Gemini Live 2.5 as voice provider in LiveKit Agents
-- [ ] On nudge ready: publish audio into room
-- [ ] Also publish data channel message for frontend card
-- [ ] Test: voice audible through browser audio output
-
-### Hour 7–9: Integration + demo rehearsal
-- [ ] Full end-to-end test: 3 browser tabs, screen share, Hermes processes frames, nudge fires, voice heard
-- [ ] Pre-stage demo laptops: large font, clear file names, single editor window
-- [ ] Run demo script 2× — fix any timing issues
-- [ ] DO deploy (Karti) — verify `/health` live
-
-### Hour 9–10: Ownership map demo (if time)
-- [ ] Load `ownership_map` on Hermes startup
-- [ ] Session 1 cold-start (3 min to first nudge) vs session 2 warm-start (< 30s)
-- [ ] Add "Session memory loaded" log visible in demo
-
-### Hour 10–12: Polish + backup plan
-- [ ] Record a backup video of the demo working end-to-end
-- [ ] Rehearse 3× with real audio
-- [ ] Fallback: Hermes runs locally if DO deploy is flaky
-
----
-
-## Open risks
+## Risk table
 
 | Risk | Mitigation |
 |---|---|
-| Gemini Vision accuracy on screens | Large font, single editor window, file name visible in tab. Confidence gate discards bad frames. |
-| Gemini Live 2.5 + LiveKit Agents wiring is unknown territory | Allocate hour 5–7 as a team. Have fallback: plain HTTP TTS → WAV → LiveKit audio track. |
-| Frame POST latency | Compress JPEG to quality 0.7, max 1280×720. Target < 500ms round trip. |
-| Event detection false positives | Cooldown (3 min between nudges). Pre-stage demo so events fire cleanly. |
-| DO deploy fails on stage | Run Hermes local. PWA already defaults to `localhost:8787`. Zero demo impact. |
+| Gemini Vision accuracy on screens | Large font (18pt+), single editor window, file tab fully visible. Confidence gate drops bad frames. |
+| Gemini Live 2.5 + LiveKit Agents unknown territory | Build together (task 6). Fallback: Gemini TTS → WAV → publish manually as audio track. |
+| Frame POST latency | JPEG quality 0.7, max 1280×720. Target < 500ms round trip. |
+| Event detection false positives | 3-min cooldown per pod. Demo is pre-staged so events fire cleanly. |
+| DO deploy fails on stage | Run Hermes local. PWA defaults to `localhost:8787` automatically. |
+| Multiple events fire at once | Cooldown + event deduplication: same file + same engineers within 1 min → skip |
 
 ---
 
 ## Demo script (3 min)
 
-**(0:00)** Three laptops visible. Alice, Bob, Carol join `demo-pod`. PodMan: *"PodMan online. I see Alice, Bob, and Carol. Let's build."*
+**(0:00)** Three laptops visible. Alice, Bob, Carol join `demo-pod` via PWA. PodMan: *"PodMan online. I see Alice, Bob, and Carol. Let's build."*
 
-**(0:20)** Alice opens `auth/middleware.ts` (big font, clearly visible). Hermes processes first frame. Ownership map: Alice → auth.
+**(0:20)** Alice opens `auth/middleware.ts` (18pt font, clearly visible). First frame processed. Ownership map: Alice → auth.
 
-**(0:45)** Bob opens `frontend/login.tsx`. Carol's terminal shows `curl: connection refused`.
+**(0:45)** Bob opens `frontend/login.tsx`. Carol runs `curl http://localhost:3001/auth` → `connection refused`.
 
-**(1:20) MONEY MOMENT 1 — BLOCKER_DETECTED:** PodMan speaks: *"Carol, looks like you're waiting on auth. Alice is actively building it in middleware.ts — hang tight."*
+**(1:20) MONEY MOMENT 1 — BLOCKER_DETECTED:**
+PodMan: *"Carol, looks like you're waiting on the auth endpoint. Alice is actively building it in middleware.ts — hang tight."*
 
-**(1:50)** Alice's server starts (visible in terminal). Hermes detects transition.
+**(1:50)** Alice starts her server. Terminal shows `Server running on :3001`.
 
-**(2:00) MONEY MOMENT 2 — DEPENDENCY_READY:** PodMan: *"Carol, Bob — Alice just got the auth endpoint running. You're clear to integrate."*
+**(2:00) MONEY MOMENT 2 — DEPENDENCY_READY:**
+PodMan: *"Carol, Bob — Alice just got the auth endpoint running. You're clear to integrate."*
 
-**(2:20)** Optional: show session 2 cold-start vs warm-start comparison.
+**(2:20)** Optional: show session 2 — Hermes logs "Session memory loaded — 3 files known." First nudge in 28s vs 3min in session 1.
 
 **(2:45)** Close: *"PodMan — the teammate that sees what Slack can't."*
+
+---
+
+## Pre-demo checklist (day of)
+
+See `docs/demo-setup.md` for full laptop setup. Key items:
+
+- [ ] All 3 laptops: font 18pt+, single editor window, file tab visible
+- [ ] `demo-pod` created in LiveKit Cloud
+- [ ] Hermes `/health` returns OK on deployed URL
+- [ ] Earbuds tested — voice audible through browser
+- [ ] Backup video recorded and on separate device
+- [ ] Demo rehearsed 3×

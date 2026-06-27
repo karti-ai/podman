@@ -35,3 +35,7 @@ Thumbs.db
 coverage/
 .cache/
 .turbo/
+
+# Ramis
+.remember/
+.claude/
