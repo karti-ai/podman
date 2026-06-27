@@ -9,19 +9,19 @@ speaking up like Jarvis: _"Karti and Yahya are both editing `auth.ts`, Yahya has
 changes — here's the diff, want a sync PR?"_
 
 > **The moat:** unpushed local code is invisible to the GitHub API. The realtime
-> screen-vision layer is the *only* way to catch a collision before the push. That is the
+> screen-vision layer is the _only_ way to catch a collision before the push. That is the
 > whole product — and the reason this is an ambient agent, not a dashboard.
 
 ## Monorepo layout
 
-| Folder | What |
-|---|---|
-| `frontend/` | React + Vite PWA — join pod, screen/mic/cam capture, PodMan voice + intervention cards |
-| `backend/` | PodMan agent: LiveKit room subscriber, Gemini vision, GitHub fusion, collision detector, voice out |
-| `infra/` | DigitalOcean deploy (App Platform / Droplet), IaC, Dockerfiles |
-| `database/` | MongoDB Atlas schema + Voyage vector memory for continual learning |
-| `shared/` | Shared TypeScript types (pod, engineer context, intervention) |
-| `docs/` | `PLAN.md` (the north star), demo script |
+| Folder      | What                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------- |
+| `frontend/` | React + Vite PWA — join pod, screen/mic/cam capture, PodMan voice + intervention cards             |
+| `backend/`  | PodMan agent: LiveKit room subscriber, Gemini vision, GitHub fusion, collision detector, voice out |
+| `infra/`    | DigitalOcean deploy (App Platform / Droplet), IaC, Dockerfiles                                     |
+| `database/` | MongoDB Atlas schema + Voyage vector memory for continual learning                                 |
+| `shared/`   | Shared TypeScript types (pod, engineer context, intervention)                                      |
+| `docs/`     | `PLAN.md` (the north star), demo script                                                            |
 
 ## Prizes we're stacking
 

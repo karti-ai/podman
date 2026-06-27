@@ -14,16 +14,18 @@ prevent merge collisions before anyone pushes**, offering to open a sync PR.
 
 - **Track:** Continual Learning
 - **Prizes targeted (stacked):** Gemini 3.5 ($5k cash), LiveKit (keyboards), DigitalOcean (credits)
-- **Hero moment:** two laptops editing the same file → PodMan *speaks up live* and offers the fix.
+- **Hero moment:** two laptops editing the same file → PodMan _speaks up live_ and offers the fix.
 
 ---
 
 ## 1. Why this fits the track (and stays eligible)
 
 ### Track = Continual Learning
+
 The official definition rewards systems that "continuously improve from real-world use…
 becoming more useful the more they are used with as little user intervention as possible."
 PodMan does exactly this:
+
 - Builds and **continuously refines a live model of the team** — who owns which files/areas,
   what's in-flight, recurring conflict patterns, each engineer's working style.
 - **Self-improves its own intervention policy** from outcomes: did the collision it predicted
@@ -32,22 +34,23 @@ PodMan does exactly this:
 - Grows a per-team **skill/memory store** (vector memory) that makes later sessions sharper.
 
 ### ⚠️ Disqualification traps — and how we dodge them
-| Risk | Mitigation |
-|---|---|
-| **"Dashboard is the main feature" = auto-DQ** | The pod grid is *secondary*. The hero is PodMan's **proactive voice/card interventions**. In the demo we barely show the grid; we show PodMan *acting*. |
-| Repo must be **public** | Make the GitHub repo public from the start. |
-| **Only what you built** during the event | Everything in this monorepo is new, timestamped by commits. Demo narrates "built today." |
-| New work only | No pre-existing project reuse. |
+
+| Risk                                          | Mitigation                                                                                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **"Dashboard is the main feature" = auto-DQ** | The pod grid is _secondary_. The hero is PodMan's **proactive voice/card interventions**. In the demo we barely show the grid; we show PodMan _acting_. |
+| Repo must be **public**                       | Make the GitHub repo public from the start.                                                                                                             |
+| **Only what you built** during the event      | Everything in this monorepo is new, timestamped by commits. Demo narrates "built today."                                                                |
+| New work only                                 | No pre-existing project reuse.                                                                                                                          |
 
 ---
 
 ## 2. Prize-stacking map
 
-| Prize | How PodMan earns it |
-|---|---|
+| Prize                             | How PodMan earns it                                                                                                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Best Gemini 3.5 ($5,000 cash)** | Realtime screen understanding via Gemini 3.5 Flash vision + PodMan's voice via Gemini Live API. Bonus: Live Translate so a multilingual pod hears PodMan in their language. |
-| **Best LiveKit (keyboards)** | LiveKit is the realtime backbone: screen-share + mic + cam tracks in, PodMan voice + data-channel cards out. It's load-bearing, not bolted on. |
-| **Best DigitalOcean (credits)** | Backend PodMan agent + LiveKit agent deployed on DigitalOcean; claim the $200 credits. |
+| **Best LiveKit (keyboards)**      | LiveKit is the realtime backbone: screen-share + mic + cam tracks in, PodMan voice + data-channel cards out. It's load-bearing, not bolted on.                              |
+| **Best DigitalOcean (credits)**   | Backend PodMan agent + LiveKit agent deployed on DigitalOcean; claim the $200 credits.                                                                                      |
 
 ---
 
@@ -79,43 +82,44 @@ PodMan does exactly this:
                        └──────────────────────────────────────────┘
 ```
 
-**The critical reconciliation:** GitHub only knows *pushed* state. The "X is editing this and
+**The critical reconciliation:** GitHub only knows _pushed_ state. The "X is editing this and
 hasn't pushed" signal comes from **vision on the live screen** (filename in the editor tab,
-visible diff/gutter), optionally cross-checked by an *optional* lightweight local `git status`
+visible diff/gutter), optionally cross-checked by an _optional_ lightweight local `git status`
 reporter the engineer can run. Vision is the headline; the local reporter is a nice-to-have.
 
 ### Continual-learning loop
+
 1. **Observe** — per-engineer context every few seconds (sampled frames, not every frame).
 2. **Store** — append observations to the team model; embed file/feature notes into Voyage
    vectors in Atlas for retrieval.
 3. **Predict** — collision detector + PodMan brain decide if/when to intervene.
 4. **Outcome** — record whether the warning was acted on / was a true positive.
 5. **Adapt** — adjust intervention thresholds, ownership attribution, and prompt context from
-   outcomes → fewer false alarms, better targeting over the session. *(This is the "gets
-   better the more you use it" story judges want.)*
+   outcomes → fewer false alarms, better targeting over the session. _(This is the "gets
+   better the more you use it" story judges want.)_
 
 ---
 
 ## 4. Stack per folder
 
-| Folder | Stack |
-|---|---|
-| `frontend/` | React + Vite + TypeScript, `livekit-client`, PWA (vite-plugin-pwa), Tailwind |
-| `backend/` | Node + TypeScript, LiveKit server SDK + agents, `@google/genai`, GitHub (Octokit or GitHub MCP), Express/ws |
-| `database/` | MongoDB Atlas (team model, observations, outcomes) + Voyage embeddings for vector recall |
-| `infra/` | DigitalOcean App Platform / Droplet, Dockerfile, app spec |
-| `shared/` | TS types: `Pod`, `EngineerContext`, `Collision`, `Intervention` |
+| Folder      | Stack                                                                                                       |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `frontend/` | React + Vite + TypeScript, `livekit-client`, PWA (vite-plugin-pwa), Tailwind                                |
+| `backend/`  | Node + TypeScript, LiveKit server SDK + agents, `@google/genai`, GitHub (Octokit or GitHub MCP), Express/ws |
+| `database/` | MongoDB Atlas (team model, observations, outcomes) + Voyage embeddings for vector recall                    |
+| `infra/`    | DigitalOcean App Platform / Droplet, Dockerfile, app spec                                                   |
+| `shared/`   | TS types: `Pod`, `EngineerContext`, `Collision`, `Intervention`                                             |
 
 ---
 
 ## 5. 20-hour build order (MVP-first)
 
-1. **Plumbing** — monorepo installs, shared types, env wiring, LiveKit token endpoint. *(Karti)*
-2. **Capture** — frontend: join pod + publish screen/mic; render PodMan card + play voice. *(Zander)*
-3. **Eyes** — backend: subscribe to a screen track, grab a frame, Gemini vision → `EngineerContext`. *(Ramis)*
-4. **Brain + collision** — fuse two engineers' contexts + GitHub state → detect same-file/feature; PodMan brain composes the intervention. *(Yahya)*
-5. **Voice + action** — PodMan speaks (Live API/TTS) into the room + "Open sync PR" via GitHub. *(Yahya + Ramis)*
-6. **Memory/continual learning** — store observations + outcomes; show the team model improving. *(Karti)*
+1. **Plumbing** — monorepo installs, shared types, env wiring, LiveKit token endpoint. _(Karti)_
+2. **Capture** — frontend: join pod + publish screen/mic; render PodMan card + play voice. _(Zander)_
+3. **Eyes** — backend: subscribe to a screen track, grab a frame, Gemini vision → `EngineerContext`. _(Ramis)_
+4. **Brain + collision** — fuse two engineers' contexts + GitHub state → detect same-file/feature; PodMan brain composes the intervention. _(Yahya)_
+5. **Voice + action** — PodMan speaks (Live API/TTS) into the room + "Open sync PR" via GitHub. _(Yahya + Ramis)_
+6. **Memory/continual learning** — store observations + outcomes; show the team model improving. _(Karti)_
 7. **Deploy on DO + polish demo** — everyone. Rehearse the live demo 3×.
 
 > If behind: cut webcam, cut multilingual, cut the local git reporter, **mock the QR join**,
@@ -128,12 +132,12 @@ reporter the engineer can run. Vision is the headline; the local reporter is a n
 > ⚠️ Roster has 5 (Karti, Ramis, Yahya, Zander, Shakthi). **Max team size is 4.** Decide who's
 > the official 4 before submission, or one stays unofficial/support.
 
-| Person | Owns |
-|---|---|
-| **Karti** | Repo/infra/plumbing, shared types, memory + continual-learning store, DO deploy |
-| **Zander** | Frontend PWA: pod join, capture, PodMan card UI + voice playback |
-| **Ramis** | Backend realtime: LiveKit room subscribe + frame grab + Gemini vision pipeline |
-| **Yahya** | PodMan brain: collision detector, intervention policy, GitHub PR action, voice out |
+| Person     | Owns                                                                               |
+| ---------- | ---------------------------------------------------------------------------------- |
+| **Karti**  | Repo/infra/plumbing, shared types, memory + continual-learning store, DO deploy    |
+| **Zander** | Frontend PWA: pod join, capture, PodMan card UI + voice playback                   |
+| **Ramis**  | Backend realtime: LiveKit room subscribe + frame grab + Gemini vision pipeline     |
+| **Yahya**  | PodMan brain: collision detector, intervention policy, GitHub PR action, voice out |
 
 ---
 
@@ -141,8 +145,8 @@ reporter the engineer can run. Vision is the headline; the local reporter is a n
 
 1. **(0:00)** Two laptops on screen. Both engineers "join the pod" (QR mock). PodMan greets them by voice.
 2. **(0:30)** Engineer A opens `auth.ts` and starts editing. PodMan quietly notes it (show the team model tick).
-3. **(1:00)** Engineer B opens the *same* `auth.ts` and edits a related function — **neither has pushed.**
-4. **(1:20) MONEY MOMENT** — PodMan *interrupts by voice*: "Heads up — Karti and Yahya are both in `auth.ts`, Yahya has unpushed changes. Here's the diff. Want me to open a sync PR?" Card appears with the diff.
+3. **(1:00)** Engineer B opens the _same_ `auth.ts` and edits a related function — **neither has pushed.**
+4. **(1:20) MONEY MOMENT** — PodMan _interrupts by voice_: "Heads up — Karti and Yahya are both in `auth.ts`, Yahya has unpushed changes. Here's the diff. Want me to open a sync PR?" Card appears with the diff.
 5. **(1:50)** One click → PodMan opens a draft PR via GitHub (show it on github.com).
 6. **(2:20)** Show it **learned**: PodMan now knows Karti owns auth; second scenario it's faster/quieter where appropriate → "more useful the more you use it."
 7. **(2:45)** One-liner close: "PodMan — the teammate that sees what git can't."
@@ -175,10 +179,10 @@ VOYAGE_API_KEY=
 
 ## 9. Open risks
 
-| Risk | Mitigation |
-|---|---|
-| Realtime vision latency/cost | Sample ~1 frame/sec or on-change; downscale frames; cache last context |
-| LiveKit ↔ Gemini frame plumbing is the hardest part | Build & de-risk it **first** (step 3); have a screenshot-fallback path |
-| "Unpushed" detection is fuzzy | Lead with vision; optional local `git status` reporter for accuracy |
-| On-stage flakiness | Pre-stage the demo repo, rehearse 3×, have a recorded backup of the money moment |
-| Dashboard-DQ optics | Keep UI minimal; demo PodMan *acting*, not a grid |
+| Risk                                                | Mitigation                                                                       |
+| --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Realtime vision latency/cost                        | Sample ~1 frame/sec or on-change; downscale frames; cache last context           |
+| LiveKit ↔ Gemini frame plumbing is the hardest part | Build & de-risk it **first** (step 3); have a screenshot-fallback path           |
+| "Unpushed" detection is fuzzy                       | Lead with vision; optional local `git status` reporter for accuracy              |
+| On-stage flakiness                                  | Pre-stage the demo repo, rehearse 3×, have a recorded backup of the money moment |
+| Dashboard-DQ optics                                 | Keep UI minimal; demo PodMan _acting_, not a grid                                |
