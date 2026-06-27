@@ -8,6 +8,8 @@ export default function App() {
   const team = useMemo(() => TEAMS.find((t) => t.id === teamId) ?? TEAMS[0]!, [teamId]);
   const [member, setMember] = useState(team.members[0]!);
   const [room, setRoom] = useState<Room | null>(null);
+  const [joined, setJoined] = useState(false);
+  const [devMode, setDevMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
@@ -22,7 +24,10 @@ export default function App() {
     setConnecting(true);
     try {
       const identity = `${member}-${Math.random().toString(36).slice(2, 7)}`;
-      setRoom(await joinPod(team.id, identity, member));
+      const result = await joinPod(team.id, identity, member);
+      setRoom(result.room);
+      setDevMode(result.mode === 'dev');
+      setJoined(true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -39,12 +44,20 @@ export default function App() {
         </p>
       </header>
 
-      {room ? (
+      {joined ? (
         <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-4">
           <p className="font-medium text-emerald-400">
             {member} connected to “{team.name}”.
           </p>
-          <p className="mt-1 text-sm text-slate-400">Sharing screen + mic. PodMan is watching.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            {room ? 'Sharing screen + mic. PodMan is watching.' : 'Pod joined.'}
+          </p>
+          {devMode && (
+            <p className="mt-3 rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
+              DEV MODE — LiveKit not configured, so screen capture is off. Set LIVEKIT_* in the
+              backend .env (and serve over HTTPS) for a real join.
+            </p>
+          )}
         </section>
       ) : (
         <section className="flex flex-col gap-4">

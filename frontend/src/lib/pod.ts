@@ -2,7 +2,7 @@ import { Room, RoomEvent } from 'livekit-client';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
 
-/** Ask the backend for a LiveKit token to join a pod. */
+/** Token + LiveKit URL minted by the backend. */
 export async function fetchPodToken(
   podId: string,
   identity: string,
@@ -17,22 +17,41 @@ export async function fetchPodToken(
   return res.json();
 }
 
+/** True once a real LiveKit server is configured (not the placeholder). */
+export function isLiveKitConfigured(url: string | undefined): boolean {
+  return !!url && !url.includes('REPLACE_ME');
+}
+
+export type JoinResult = { mode: 'live'; room: Room } | { mode: 'dev'; room: null };
+
 /**
- * Join a pod: connect to the LiveKit room and publish screen + mic so PodMan
- * can watch. Returns the connected Room.
+ * Join a pod. When LiveKit is configured we connect for real and publish
+ * screen + mic. Otherwise we fall back to a dev mock join so the post-join UI
+ * is developable without LiveKit creds / HTTPS.
  */
-export async function joinPod(podId: string, identity: string, name: string): Promise<Room> {
+export async function joinPod(podId: string, identity: string, name: string): Promise<JoinResult> {
   const { token, url } = await fetchPodToken(podId, identity, name);
+
+  if (!isLiveKitConfigured(url)) {
+    console.warn('[podman] LiveKit not configured — dev mock join (no screen capture)');
+    return { mode: 'dev', room: null };
+  }
+
   const room = new Room({ adaptiveStream: true, dynacast: true });
   room.on(RoomEvent.Disconnected, () => console.log('[podman] disconnected'));
-
   await room.connect(url, token);
 
-  const screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
-  for (const track of screen.getTracks()) {
-    await room.localParticipant.publishTrack(track);
+  // Screen capture needs a secure context (HTTPS or localhost). Guard so a
+  // non-secure origin doesn't hard-crash the join.
+  if (window.isSecureContext && navigator.mediaDevices?.getDisplayMedia) {
+    const screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    for (const track of screen.getTracks()) {
+      await room.localParticipant.publishTrack(track);
+    }
+    await room.localParticipant.setMicrophoneEnabled(true);
+  } else {
+    console.warn('[podman] insecure context — screen capture skipped (needs HTTPS)');
   }
-  await room.localParticipant.setMicrophoneEnabled(true);
 
-  return room;
+  return { mode: 'live', room };
 }
