@@ -7,6 +7,8 @@ import { PodCard } from './components/PodCard.js';
 import { CreatePodForm } from './components/CreatePodForm.js';
 import { PodView } from './components/PodView.js';
 
+const SESSION_KEY = 'podman.session';
+
 export default function App() {
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,6 +20,7 @@ export default function App() {
   const [member, setMember] = useState('');
   const [devMode, setDevMode] = useState(false);
   const [room, setRoom] = useState<Room | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const joinedPod = joinedPodId ? (pods.find((p) => p.id === joinedPodId) ?? null) : null;
 
@@ -33,10 +36,6 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    void refresh();
-  }, []);
-
   const startPending = (key: string) => setPending((s) => new Set(s).add(key));
   const endPending = (key: string) =>
     setPending((s) => {
@@ -45,7 +44,44 @@ export default function App() {
       return n;
     });
 
-  /** Run a mutation keyed by pod id (or 'new'); only that card shows busy. */
+  // Connect to a pod's LiveKit room and persist the session for refresh-resume.
+  async function connectToPod(podId: string, who: string) {
+    const identity = `${who}-${Math.random().toString(36).slice(2, 7)}`;
+    const result = await joinPod(podId, identity, who);
+    setRoom(result.room);
+    setDevMode(result.mode === 'dev');
+    setMember(who);
+    setJoinedPodId(podId);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ podId, member: who }));
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  // Resume a joined session across a page refresh (auto-reconnect, no re-prompt).
+  useEffect(() => {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    let saved: { podId: string; member: string };
+    try {
+      saved = JSON.parse(raw);
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+      return;
+    }
+    setRestoring(true);
+    void (async () => {
+      try {
+        await connectToPod(saved.podId, saved.member);
+      } catch {
+        sessionStorage.removeItem(SESSION_KEY);
+      } finally {
+        setRestoring(false);
+      }
+    })();
+  }, []);
+
   async function run(key: string, fn: () => Promise<void>) {
     startPending(key);
     setError(null);
@@ -60,7 +96,6 @@ export default function App() {
 
   const upsert = (p: Pod) => setPods((cur) => cur.map((x) => (x.id === p.id ? p : x)));
 
-  // create rethrows so CreatePodForm can keep the user's input on failure
   async function handleCreate(input: PodInput): Promise<void> {
     startPending('new');
     setError(null);
@@ -91,12 +126,7 @@ export default function App() {
     startPending(pod.id);
     setError(null);
     try {
-      const identity = `${who}-${Math.random().toString(36).slice(2, 7)}`;
-      const result = await joinPod(pod.id, identity, who);
-      setRoom(result.room);
-      setDevMode(result.mode === 'dev');
-      setMember(who);
-      setJoinedPodId(pod.id);
+      await connectToPod(pod.id, who);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -108,7 +138,10 @@ export default function App() {
     room?.disconnect();
     setRoom(null);
     setJoinedPodId(null);
+    sessionStorage.removeItem(SESSION_KEY);
   }
+
+  const showReconnecting = restoring || (joinedPodId !== null && joinedPod === null);
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-5xl px-4 py-8 sm:px-6">
@@ -123,7 +156,23 @@ export default function App() {
       </header>
 
       {joinedPod ? (
-        <PodView team={joinedPod} me={member} devMode={devMode} onLeave={handleLeave} />
+        <PodView
+          team={joinedPod}
+          me={member}
+          room={room}
+          devMode={devMode}
+          onLeave={handleLeave}
+        />
+      ) : showReconnecting ? (
+        <div className="flex flex-col items-start gap-3">
+          <p className="text-sm text-slate-400">Reconnecting to your pod…</p>
+          <button
+            className="text-xs text-slate-500 hover:text-slate-300"
+            onClick={handleLeave}
+          >
+            Cancel
+          </button>
+        </div>
       ) : (
         <main className="flex flex-col gap-4">
           <div className="flex items-center justify-between">

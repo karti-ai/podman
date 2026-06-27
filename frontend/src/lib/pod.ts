@@ -25,33 +25,22 @@ export function isLiveKitConfigured(url: string | undefined): boolean {
 export type JoinResult = { mode: 'live'; room: Room } | { mode: 'dev'; room: null };
 
 /**
- * Join a pod. When LiveKit is configured we connect for real and publish
- * screen + mic. Otherwise we fall back to a dev mock join so the post-join UI
- * is developable without LiveKit creds / HTTPS.
+ * Join a pod = connect to the LiveKit room. Returns as soon as the room is
+ * connected — screen sharing is a separate, deliberate action (see PodView) so
+ * a denied/slow screen prompt never blocks or fails the join.
  */
 export async function joinPod(podId: string, identity: string, name: string): Promise<JoinResult> {
   const { token, url } = await fetchPodToken(podId, identity, name);
 
   if (!isLiveKitConfigured(url)) {
-    console.warn('[podman] LiveKit not configured — dev mock join (no screen capture)');
+    console.warn('[podman] LiveKit not configured — dev mock join');
     return { mode: 'dev', room: null };
   }
 
   const room = new Room({ adaptiveStream: true, dynacast: true });
   room.on(RoomEvent.Disconnected, () => console.log('[podman] disconnected'));
   await room.connect(url, token);
-
-  // Screen capture needs a secure context (HTTPS or localhost). Guard so a
-  // non-secure origin doesn't hard-crash the join.
-  if (window.isSecureContext && navigator.mediaDevices?.getDisplayMedia) {
-    const screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    for (const track of screen.getTracks()) {
-      await room.localParticipant.publishTrack(track);
-    }
-    await room.localParticipant.setMicrophoneEnabled(true);
-  } else {
-    console.warn('[podman] insecure context — screen capture skipped (needs HTTPS)');
-  }
-
+  // Allow remote audio to play (autoplay policy) — we're inside the join gesture.
+  await room.startAudio().catch(() => {});
   return { mode: 'live', room };
 }
