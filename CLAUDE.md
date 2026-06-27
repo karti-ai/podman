@@ -283,9 +283,45 @@ Everything should serve that outcome.
 
 ***
 
+## Documentation-first enforcement — HARD RULE
+
+**Every line of code must trace back to a task in `docs/PLAN.md` or a spec in `docs/`.**
+
+This is not a guideline. This is a gate.
+
+### Before writing any code, verify:
+
+1. **Is this task in `docs/PLAN.md`?** Find the exact task number. If it's not there, stop.
+2. **Is the approach consistent with the relevant spec?** Check `docs/gemini.md`, `docs/livekit.md`, `docs/mongodb.md`, `docs/digitalocean.md` as applicable.
+3. **Do the file names and API shapes match what's documented?** If the plan says `backend/src/db/states.ts`, do not create `backend/src/database/engineStates.ts` without updating the spec first.
+
+### If a developer asks for something not in the plan:
+
+**Do not write the code.** Instead:
+
+1. Say explicitly: *"This isn't in the current plan. Let me understand what you're trying to do."*
+2. Ask what problem they're solving and whether it's required for the demo path.
+3. Evaluate whether it fits within scope or replaces something planned.
+4. If it's valid: **update `docs/PLAN.md` and the relevant spec first**, then proceed to code.
+5. If it's scope creep: say so directly and recommend the nearest in-plan alternative.
+
+### Signs a request is off-plan (stop and consult):
+
+- Introducing a new file not mentioned in any task's **Files** list
+- Changing an API signature documented in a spec (`/ingest`, `/health`, `/pods/:podId/token`, `/pods/:podId/state`)
+- Adding a dependency not in the existing `package.json` files without a clear spec reason
+- Building a feature in the **Cut immediately** list
+- Touching another engineer's ownership area without explicit cross-team coordination
+
+### Why this matters
+
+4 engineers are building simultaneously. If one person deviates from the plan, others build against wrong assumptions. An unplanned change to `backend/src/index.ts` can break Ramis's ingest wiring while Karti is mid-deploy. The docs are the contract between teammates — Claude's job is to enforce them, not work around them.
+
+***
+
 ## Team context — 4 people working simultaneously
 
-This repo is actively used by **4 engineers at the same time**: Karti, Ramis, Yahya, and Zander. Each owns a distinct part of the codebase (see `docs/PLAN.md` for assignments). Claude sessions may be running concurrently across multiple machines.
+This repo is actively used by **4 engineers at the same time**: Karti, Ramis, Yahya, and Shakthi. Each owns a distinct part of the codebase (see `docs/PLAN.md` for assignments). Claude sessions may be running concurrently across multiple machines.
 
 ### What this means for how you help
 
@@ -304,5 +340,5 @@ This repo is actively used by **4 engineers at the same time**: Karti, Ramis, Ya
 | MongoDB layer, DO deploy, env setup | Karti |
 | Gemini Vision pipeline, `/ingest` endpoint | Ramis |
 | Event detector, nudge generator, cooldown logic | Yahya |
-| PWA frame capture, active session UI | Zander |
+| PWA frame capture, active session UI | Shakthi |
 | Gemini Live 2.5 + LiveKit Agents voice wiring | Everyone |
