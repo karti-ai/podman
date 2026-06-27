@@ -315,30 +315,18 @@ This is not a guideline. This is a gate.
 
 ### Why this matters
 
-4 engineers are building simultaneously. If one person deviates from the plan, others build against wrong assumptions. An unplanned change to `backend/src/index.ts` can break Ramis's ingest wiring while Karti is mid-deploy. The docs are the contract between teammates — Claude's job is to enforce them, not work around them.
+4 engineers are building simultaneously. If one person deviates from the plan, others build against wrong assumptions. An unplanned change to `backend/src/index.ts` can silently break another engineer's work mid-build. The docs are the contract between teammates — Claude's job is to enforce them, not work around them.
 
 ***
 
 ## Team context — 4 people working simultaneously
 
-This repo is actively used by **4 engineers at the same time**: Karti, Ramis, Yahya, and Shakthi. Each owns a distinct part of the codebase (see `docs/PLAN.md` for assignments). Claude sessions may be running concurrently across multiple machines.
+This repo is actively used by **4 engineers at the same time**. Claude sessions may be running concurrently across multiple machines. There are no fixed per-person ownership assignments — anyone may pick up any task.
 
 ### What this means for how you help
 
-- **Scope responses to the person's assigned area.** If Ramis asks about the vision pipeline, do not suggest touching the MongoDB layer — that's Karti's lane. Only cross lanes when explicitly asked.
-- **Never suggest refactoring another person's code** without the user flagging that they've coordinated. Assume other files are actively being edited.
-- **Treat integration points as contracts, not suggestions.** The shared types in `shared/src/` and the API shape of `POST /ingest`, `GET /pods/:podId/token`, and `GET /pods/:podId/state` are the interface between owners — do not change their signatures unilaterally.
-- **When proposing new files**, confirm they don't collide with another person's current work by checking `docs/PLAN.md` for ownership.
-- **Flag merge risk explicitly** when a change touches a file that multiple people might edit (e.g., `backend/src/index.ts`, `frontend/src/App.tsx`).
-- **Prefer additive changes** — new files, new functions — over modifying existing ones when possible. This minimizes merge conflicts.
-- **If unsure whose territory something is**, say so and recommend the person check with the relevant teammate before proceeding.
-
-### Ownership map (from docs/PLAN.md)
-
-| Area | Owner |
-|---|---|
-| MongoDB layer, DO deploy, env setup | Karti |
-| Gemini Vision pipeline, `/ingest` endpoint | Ramis |
-| Event detector, nudge generator, cooldown logic | Yahya |
-| PWA frame capture, active session UI | Shakthi |
-| Gemini Live 2.5 + LiveKit Agents voice wiring | Everyone |
+- **Assume other files are actively being edited.** Never refactor code outside the immediate task scope without explicit coordination from the user.
+- **Treat integration points as contracts.** The shared types in `shared/src/` and the API shapes of `POST /ingest`, `GET /pods/:podId/token`, and `GET /pods/:podId/state` are the interfaces between all teammates — do not change their signatures unilaterally.
+- **Flag merge risk explicitly** before editing a shared file (e.g., `backend/src/index.ts`, `frontend/src/App.tsx`). Say so, then proceed only if the user confirms.
+- **Prefer additive changes** — new files, new functions — over modifying existing ones. This minimizes merge conflicts in a concurrent team.
+- **When proposing new files**, verify they match the file names listed in the relevant task in `docs/PLAN.md`. Do not invent new paths.

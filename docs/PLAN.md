@@ -16,7 +16,7 @@ Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures
 ## Critical path — must ship for demo
 
 ### 1. Environment + health check
-**Owner:** Karti | **Est:** 1h | **Blocks:** everything
+**Est:** 1h | **Blocks:** everything
 
 - [ ] All `.env` vars populated: `LIVEKIT_*`, `GEMINI_API_KEY`, `MONGODB_URI`
 - [ ] `GET /health` returns `{ ok: true, service: 'podman-backend' }` *(already implemented)*
@@ -28,7 +28,7 @@ Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures
 ---
 
 ### 2. PWA frame capture
-**Owner:** Shakthi | **Est:** 1.5h | **Depends on:** task 1 stub
+**Est:** 1.5h | **Depends on:** task 1 stub
 
 - [ ] After joining pod, start capture loop: `setInterval` every 30s
 - [ ] `getDisplayMedia` already running — grab frame from existing screen track via `ImageBitmap` → `OffscreenCanvas` → `toBlob('image/jpeg', 0.7)`
@@ -41,7 +41,7 @@ Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures
 ---
 
 ### 2b. Local git watcher script
-**Owner:** Ramis | **Est:** 1.5h | **Depends on:** task 1, task 3 (schema)
+**Est:** 1.5h | **Depends on:** task 1, task 3 (schema)
 
 A tiny Node.js script each engineer runs once in a terminal on their machine. Writes git signals **directly to MongoDB Atlas** every 15s — no HTTP to Hermes. Hermes reads merged state (vision + git) from Atlas when running event detection.
 
@@ -67,7 +67,7 @@ node scripts/podman-agent.mjs --name alice --pod demo-pod
 ---
 
 ### 3. MongoDB state layer
-**Owner:** Karti | **Est:** 1.5h | **Depends on:** task 1
+**Est:** 1.5h | **Depends on:** task 1
 
 - [ ] `engineer_states` upsert: `db.collection('engineer_states').updateOne({ _id: engineerId }, { $set: ctx }, { upsert: true })`
 - [ ] `ownership_map` upsert: called after each state write where `currentFile` is non-null
@@ -80,7 +80,7 @@ node scripts/podman-agent.mjs --name alice --pod demo-pod
 ---
 
 ### 4. Gemini Vision pipeline
-**Owner:** Ramis | **Est:** 2h | **Depends on:** tasks 1, 3
+**Est:** 2h | **Depends on:** tasks 1, 3
 
 Wire `POST /ingest` fully:
 
@@ -96,7 +96,7 @@ Wire `POST /ingest` fully:
 ---
 
 ### 5. Event detector + nudge generator
-**Owner:** Yahya | **Est:** 2h | **Depends on:** tasks 3, 4
+**Est:** 2h | **Depends on:** tasks 3, 4
 
 - [ ] After each state write, fetch all `engineer_states` for the pod (only docs updated in last 2 min — stale engineers ignored)
 - [ ] Call `gemini-2.0-flash` with event detection prompt (see `docs/gemini.md`) — pass all states + ownership map as JSON
@@ -113,7 +113,7 @@ Wire `POST /ingest` fully:
 ---
 
 ### 6. Gemini Live 2.5 voice via LiveKit Agents
-**Owner:** Everyone | **Est:** 2h | **Depends on:** tasks 1, 5
+**Est:** 2h | **Depends on:** tasks 1, 5
 
 Highest integration risk — do as a team.
 
@@ -129,7 +129,7 @@ Highest integration risk — do as a team.
 ---
 
 ### 7. PWA active session UI
-**Owner:** Shakthi | **Est:** 1.5h | **Depends on:** tasks 2, 6
+**Est:** 1.5h | **Depends on:** tasks 2, 6
 
 - [ ] Active session screen (post-join — replace current "Connected" placeholder)
 - [ ] Teammate status cards: name, inferred file, inferred task — polled from backend via `GET /pods/:podId/state` or updated via data channel
@@ -141,10 +141,10 @@ Highest integration risk — do as a team.
 
 ---
 
-## Cut line — below here only if hours 1–7 done before hour 10
+## Cut line — below here only if tasks 1–7 done before hour 10
 
 ### 8. Ownership warm-start demo
-**Owner:** Karti | **Est:** 1h | **Depends on:** task 3
+**Est:** 1h | **Depends on:** task 3
 
 - [ ] On Hermes startup: log "Loading session memory for pod X — N files known"
 - [ ] Ownership cache pre-populated before first frame arrives
@@ -153,14 +153,14 @@ Highest integration risk — do as a team.
 ---
 
 ### 9. `DUPLICATE_WORK` event type
-**Owner:** Yahya | **Est:** 0.5h | **Depends on:** task 5
+**Est:** 0.5h | **Depends on:** task 5
 
 - [ ] Add to event detection prompt — already supported, just needs testing + nudge template
 
 ---
 
 ### 10. Backend state endpoint
-**Owner:** Karti | **Est:** 0.5h | **Depends on:** task 3
+**Est:** 0.5h | **Depends on:** task 3
 
 - [ ] `GET /pods/:podId/state` → returns all `engineer_states` for the pod
 - [ ] Used by PWA to populate teammate status cards (alternative to data channel push)
@@ -180,18 +180,6 @@ Highest integration risk — do as a team.
 - Always-on raw screen surveillance (30s sampling is by design)
 - Full task management features
 - User auth / accounts
-
----
-
-## Team assignments summary
-
-| Person | Primary tasks | Hours |
-|---|---|---|
-| **Karti** | 1 (env + health), 3 (MongoDB layer), 10 (state endpoint) | ~3–4h |
-| **Ramis** | 4 (Gemini Vision pipeline), part of 2 (capture help) | ~3h |
-| **Yahya** | 5 (event detector + nudge generator), 9 (duplicate work) | ~3h |
-| **Shakthi** | 2 (PWA frame capture), 7 (active session UI) | ~3h |
-| **Everyone** | 6 (Gemini Live + LiveKit Agents voice) | ~2h |
 
 ---
 
