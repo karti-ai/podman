@@ -70,3 +70,34 @@ pnpm install
 pnpm --filter backend dev   # Hermes on :8787
 pnpm --filter frontend dev  # PWA on :5173
 ```
+
+---
+
+## Git watcher — run this on every demo laptop
+
+Each engineer runs this in a terminal before the demo. It polls the local git working tree every 15 seconds and writes git state to MongoDB so PodMan has deterministic dirty/unpushed truth that vision alone cannot reliably infer.
+
+```bash
+# from the repo root
+node scripts/podman-agent.mjs --name <yourname> --pod <podId>
+```
+
+**Demo setup (one command per laptop):**
+
+```bash
+# Alice's laptop
+node scripts/podman-agent.mjs --name alice --pod demo-pod
+
+# Bob's laptop
+node scripts/podman-agent.mjs --name bob --pod demo-pod
+
+# Carol's laptop
+node scripts/podman-agent.mjs --name carol --pod demo-pod
+```
+
+The script logs one line per cycle — branch, changed file count, and latest commit. Leave it running in a background terminal tab throughout the session. Stop with `Ctrl+C`.
+
+**Requirements:**
+- `MONGODB_URI` must be set — either exported in the shell or present in `backend/.env`
+- Run `pnpm install` first so `mongodb` is in workspace `node_modules`
+- Must be run from the repo root (the script resolves `backend/.env` relative to its own path)

@@ -1,246 +1,724 @@
-# PodMan — Implementation Plan (12 hours)
+# PodMan - Canonical Master Plan
 
-> Architecture locked. See `docs/idea.md` for concept, integration specs for details.
-> Tasks ordered by dependency and demo criticality. Never cut items above the cut line.
-
----
-
-## What we are building
-
-Engineers join a LiveKit room with earbuds. The PodMan agent (`backend/src/agent.ts`) subscribes to each engineer's screen-share track, samples frames at ~1fps, calls Gemini Vision, detects collisions, and publishes interventions via LiveKit data channel + voice. MongoDB Atlas stores observations, collisions, interventions, and outcomes — persisting across sessions for continual learning.
-
-**Actual architecture (differs from original spec):** Screen frames flow through the LiveKit room (agent subscribes to screen tracks), not via HTTP POST /ingest from the PWA. The agent runs as a separate process (`pnpm dev:agent`). The HTTP server handles token minting, pods CRUD, memory stats, and outcome recording.
-
-**Demo:** Alice builds auth endpoint. Carol is blocked. PodMan notices, warns Carol. Alice's server starts. PodMan tells Carol and Bob they're clear to integrate. No Slack. No asking.
+> Source of truth for PodMan product intent, current implementation truth, demo
+> strategy, public interfaces, risks, sponsor story, and next build order.
+>
+> If this file conflicts with `README.md`, `docs/idea.md`, `docs/livekit.md`,
+> `docs/gemini.md`, `docs/mongodb.md`, `docs/digitalocean.md`,
+> `docs/demo-setup.md`, or `docs/superpowers/specs/*`, follow this file and
+> treat the older docs as reference material to reconcile later.
 
 ---
 
-## Status legend
-- ✅ Done and deployed on server
-- ⚠️ Partial — code exists, needs work
-- ❌ Not started
+## 1. Product thesis
+
+**PodMan sees active work before it becomes visible to GitHub, remembers how the
+team works, researches better paths in the background, and coordinates teammates
+without being intrusive.**
+
+GitHub knows pushed branches, PRs, issues, and comments. It cannot see the most
+expensive coordination failures while they are still forming on laptops: two
+engineers editing the same unpushed file, someone blocked on an endpoint a
+teammate is nearly done with, duplicated work starting silently, or a team
+walking into a dead-end implementation path.
+
+PodMan puts engineers in a consented LiveKit pod, watches live IDE/screen
+context, fuses that with scheduled local git reports, GitHub state, MongoDB team
+memory, and background research, then routes only useful interventions through
+Hermes. The default is a small visual card. Hermes can message teammates when
+the team needs coordination. Voice is reserved for urgent escalation.
+
+**One-line product definition:** PodMan is a non-intrusive, continual-learning
+team assistant for active coding.
+
+**One-line demo promise:** PodMan notices live work, finds a better path,
+remembers a previous intervention, and escalates only when the team actually
+needs it.
 
 ---
 
-## Critical path — must ship for demo
+## 2. Product contract
 
-### 1. Environment + health check
-**Status: ✅ Done**
+### Inputs
 
-- [x] `GET /health` returns `{ ok: true }` — live at `http://165.22.129.249:8787/health`
-- [x] MongoDB connection established in `backend/src/memory/db.ts` — `collections()` export
-- [x] Pods CRUD: `GET/POST /api/pods`, `GET/DELETE /api/pods/:id`, `POST/DELETE /api/pods/:id/members`
-- [x] Backend running in tmux on DO droplet (`pnpm dev` via `tsx watch src/server.ts`)
-- [ ] Root `.env` not present — `backend/.env` has creds, sufficient for current setup
+- **Live IDE/screen context:** engineers join a LiveKit room and publish screen
+  share so the backend agent can sample real work in progress.
+- **Scheduled local git state:** each laptop should report dirty files,
+  unpushed commits, branch, and latest commit about every minute. This is the
+  deterministic fallback for facts vision cannot reliably infer.
+- **MongoDB team memory:** ownership, current tasks, blockers, repeated
+  mistakes, preferred tools, decisions, intervention history, and outcomes.
+- **GitHub repo state:** public repo metadata, branches, PR artifacts, and
+  issue/PR state when it exists.
+- **Background research signals:** tool, repo, skill, package, docs, and
+  dead-end evidence discovered while teammates are working.
 
-**Actual files:** `backend/src/memory/db.ts`, `backend/src/server.ts`, `backend/src/env.ts`
+### Outputs
+
+- **Default:** small visual intervention card in the PodMan frontend.
+- **Coordination:** Hermes message to the right teammate(s) or project channel.
+- **Urgent escalation:** voice only when timing or risk justifies interruption.
+- **Action path:** optional sync PR, research recommendation, summary, fix
+  suggestion, or teammate notification.
+
+### Memory rules
+
+- Remember team-level work patterns, not raw screen recordings.
+- Store structured observations, collisions, interventions, outcomes, and pod
+  state.
+- Add exact-signature recall before vector recall: normalized file, symbol,
+  engineer pair, event type, and accepted/dismissed outcome.
+- Privacy must stay explicit: engineers consent by joining the pod and sharing
+  screen context; do not store raw screenshots, full recordings, or secrets.
+
+### Non-goals
+
+- Not a dashboard as the product center.
+- Not a screenshot analyzer with no action loop.
+- Not sponsor-padding; every sponsor technology must be load-bearing or clearly
+  marked as optional polish.
+- Not a task manager, Slack clone, full auth system, or general surveillance
+  tool.
 
 ---
 
-### 2. PWA frame capture
-**Status: ✅ Done (different approach than originally planned)**
+## 3. Track fit: Continual Learning
 
-Original plan: PWA captures JPEG every 30s → POST /ingest. Actual: PWA publishes screen as LiveKit video track → agent subscribes and samples at ~1fps using `livekit-client-node` + `sharp`.
+PodMan fits **Continual Learning** because the system gets more useful from team
+history and intervention outcomes.
 
-- [x] `frontend/src/lib/pod.ts` — `joinPod()` connects to LiveKit, publishes screen + mic
-- [x] `backend/src/agent.ts` — subscribes to `SOURCE_SCREENSHARE` tracks, throttles at `SAMPLE_INTERVAL_MS`
-- [x] Resize to max 1280px wide, JPEG quality 70 via `sharp`
-- [x] Dev mock-join fallback when LiveKit unconfigured
-- [x] `frontend/src/livekit/useScreenPublish.ts` — React hook for screen track
+- **Team model:** observations build ownership, hotspot, blocker, tool, and
+  decision memory per pod.
+- **Outcome loop:** accepted, dismissed, and confirmed interventions become
+  supervision for future thresholds and routing.
+- **Session compounding:** a later similar situation should reference prior
+  memory, choose a better action sooner, or lower the noise level.
+- **Visible demo proof:** the first intervention writes memory; the second
+  similar situation retrieves it and says, in effect, "I have seen this pattern
+  before."
 
-**Actual files:** `backend/src/agent.ts`, `frontend/src/lib/pod.ts`, `frontend/src/livekit/useScreenPublish.ts`
+The learning proof should not depend on Atlas Vector Search being finished.
+Exact MongoDB recall is enough for the MVP learning beat.
 
 ---
 
-### 2b. Local git watcher script
-**Status: ❌ Not started**
+## 4. Current implementation truth
 
-- [ ] `scripts/podman-agent.mjs` — CLI script polling git every 15s, writing to MongoDB
-- [ ] Args: `--name alice --pod demo-pod`
-- [ ] Every 15s: `git status --short`, `git diff --stat HEAD`, `git log --oneline -1`, `git branch --show-current`
-- [ ] Upsert into `observations` collection — update only git fields, leave vision fields untouched
-- [ ] Graceful exit on Ctrl+C
+Verified on `2026-06-27` from local repo inspection, authenticated `gh`, and
+the current remote plan commit.
 
-**Usage:**
-```bash
-node scripts/podman-agent.mjs --name alice --pod demo-pod
+### GitHub state
+
+- Repo: <https://github.com/karti-ai/podman>
+- Visibility: public
+- Default branch: `main`
+- Current local branch: `main`
+- Local branch state during this rewrite: behind `origin/main` by two commits
+- Issues: none
+- PRs: none
+- `origin/main` latest relevant commits:
+  - `8271188 feat(frontend): live room view, beat connectivity test, session resume`
+  - `65a0791 docs(plan): audit server state + mark tasks 1-5 done, reflect actual arch`
+
+### Working / started
+
+- Monorepo packages exist: `frontend`, `backend`, `shared`, `database`, and
+  `infra`.
+- Backend is split into two processes:
+  - API service in `backend/src/server.ts`.
+  - LiveKit agent worker in `backend/src/agent.ts`.
+- Backend API exposes:
+  - `GET /health`
+  - `POST /api/token`
+  - `POST /api/sync-pr`
+  - `POST /api/outcome`
+  - `GET /api/memory/stats`
+  - `GET /api/pods`
+  - `POST /api/pods`
+  - `GET /api/pods/:id`
+  - `PATCH /api/pods/:id`
+  - `DELETE /api/pods/:id`
+  - `POST /api/pods/:id/members`
+  - `DELETE /api/pods/:id/members/:name`
+- Remote API health check returned `{"ok":true}` at
+  `http://165.22.129.249:8787/health` during verification.
+- The LiveKit agent uses `@livekit/rtc-node` to join as `podman-agent`, subscribe
+  to `TrackSource.SOURCE_SCREENSHARE`, sample frames near 1 fps, convert frames
+  to RGBA, and encode downscaled JPEGs with `sharp`.
+- Gemini vision is wired in `backend/src/vision/gemini.ts` with JSON structured
+  output, response schema, low media resolution, and model ID from env.
+- Collision detection exists and groups engineer contexts by normalized file,
+  then fires when 2+ engineers touch the same file and at least one unpushed or
+  dirty signal exists.
+- Shared LiveKit data topic and wire messages exist:
+  - topic: `podman.intervention`
+  - messages: `COLLISION`, `VOICE_CUE`, `ACK`, `GIT_REPORT`
+- MongoDB persistence groundwork exists for observations, collisions,
+  interventions, outcomes, and pods.
+- Frontend has pod selection, pod join, post-join pod view, LiveKit join helper,
+  and dev-mode fallback.
+- `origin/main` adds live room participants, active-speaker state, session
+  resume, a "Play beat" audio connectivity test, and a deliberate "Share my
+  screen" button that publishes with `Track.Source.ScreenShare`. Merge that
+  remote commit before doing more frontend work on the local checkout.
+- DigitalOcean infra scaffolding exists:
+  - `infra/.do/app.yaml` is the split App Platform direction.
+  - `infra/app.yaml` is an older single-service backend spec and should be
+    treated as legacy until reconciled.
+
+### Server snapshot
+
+From the remote plan snapshot and health check on `2026-06-27`:
+
+- Backend API: running on `http://165.22.129.249:8787` and `/health` returned
+  `{"ok":true}`.
+- Frontend: reported running on `:81`; port `80` was already taken.
+- Agent worker: reported not running; it still needs LiveKit credentials and
+  `pnpm --filter @podman/backend dev:agent`.
+- Treat this as operational evidence, not architecture truth. Reverify before
+  demo.
+
+### Partial / stubbed
+
+- `backend/src/voice/live.ts` logs only; it does not publish real voice/audio
+  into LiveKit yet.
+- Hermes is a product/action/messaging layer in the plan, but the current repo
+  does not yet implement a complete Hermes notification bridge.
+- `backend/src/memory/vectors.ts` is not a real Voyage/Atlas Vector Search
+  implementation yet.
+- Exact-signature recall is the required MVP fallback before vectors.
+- `backend/src/memory/policy.ts` is a simple gate; it does not learn thresholds
+  from outcomes yet.
+- `POST /api/sync-pr` creates a PR artifact path but does not yet build a
+  meaningful sync diff.
+- Frontend `PodView` has only a placeholder intervention area unless/until live
+  intervention rendering is wired.
+- Browser screen publishing exists, but the active join path must be proven to
+  tag tracks as screen share so the backend agent can filter them correctly. The
+  `origin/main` screen-share button appears to address this; local code remains
+  behind until that commit is merged.
+- `GIT_REPORT` exists in shared types and agent handling. `scripts/podman-agent.mjs`
+  is the finished per-laptop git sidecar — polls every 15 s, upserts git fields
+  to `engineer_states` collection. Not yet wired to publish a `GIT_REPORT` data
+  channel message into the LiveKit room (agent fusion step still needed).
+- Background research recommendations are a product requirement and demo goal,
+  not an implemented research agent yet.
+- Deployment reliability is partial; API health is reachable, but API/static
+  site/worker together must still be reverified before demo.
+- Env docs are inconsistent: backend defaults are `gemini-3.5-flash` and
+  `gemini-3.1-flash-live-preview`, while `.env.example` still lists older
+  Gemini model names.
+
+### Not yet proven
+
+- Real browser -> LiveKit room -> backend agent screen-frame capture end to end.
+- Real Gemini inference from a live shared IDE frame using the stage key/model.
+- Real data-channel intervention card rendering in the active frontend.
+- Hermes message routing to teammates.
+- Voice escalation heard by participants through LiveKit.
+- A meaningful real sync PR flow with correct GitHub scopes and artifact.
+- Atlas Vector Search / Voyage recall path.
+- DigitalOcean static site + API service + LiveKit agent worker all running
+  together.
+- Background research recommendation that is both timely and evidence-backed.
+
+---
+
+## 5. Architecture to build toward
+
+```
+Engineer browser PWA
+  - joins a pod room
+  - publishes screen share and optional mic
+  - receives intervention cards and voice
+        |
+        v
+LiveKit room
+  - one room per pod
+  - screen-share tracks are the live work signal
+  - small reliable data packets carry interventions
+        |
+        v
+PodMan backend agent worker
+  - @livekit/rtc-node room participant
+  - screen-track subscription
+  - frame throttle and JPEG encode
+  - Gemini structured vision
+  - scheduled GIT_REPORT fusion
+  - GitHub state fusion
+  - collision, blocker, duplicate-work, and dead-end detection
+  - MongoDB memory recall and policy
+        |
+        v
+Hermes action layer
+  - visual card routing
+  - teammate messages
+  - urgent voice escalation
+  - optional research/action/sync PR workflows
+        |
+        v
+Backend API + MongoDB + GitHub
+  - token minting, pod CRUD, outcomes, memory stats
+  - observations, collisions, interventions, outcomes, pod memory
+  - public repo state and PR artifacts
 ```
 
-**Files:** `scripts/podman-agent.mjs` (new)
+The backend must remain split:
+
+- **API service:** routable HTTP process with `/api/*` endpoints and health
+  checks.
+- **Agent worker:** outbound LiveKit participant with no HTTP health-check port
+  requirement.
+
+This split matters for DigitalOcean App Platform: the LiveKit agent should be a
+worker, not a web service that App Platform expects to health-check over HTTP.
 
 ---
 
-### 3. MongoDB state layer
-**Status: ✅ Done (different collection names than originally planned)**
+## 6. Public interfaces to preserve
 
-- [x] `observations` — `recordObservation(ctx: EngineerContext)` 
-- [x] `collisions` — `recordCollision(collision: Collision)`
-- [x] `interventions` — `recordIntervention(intervention: Intervention)`
-- [x] `outcomes` — `recordOutcome(outcome: InterventionOutcome)`
-- [x] `memoryStats()` — count per collection, exposed via `GET /api/memory/stats`
-- [x] Vector recall: `recallSimilar(collision)` in `backend/src/memory/vectors.ts`
-- [x] Policy gate: `shouldIntervene(collision, prior)` in `backend/src/memory/policy.ts`
+Do not rename or reshape these without updating frontend, backend, docs, and demo
+scripts together.
 
-**Actual files:** `backend/src/memory/db.ts`, `backend/src/memory/store.ts`, `backend/src/memory/policy.ts`, `backend/src/memory/vectors.ts`
+### Backend HTTP
 
----
+- `GET /health`
+- `POST /api/token`
+- `POST /api/sync-pr`
+- `POST /api/outcome`
+- `GET /api/memory/stats`
+- `GET /api/pods`
+- `POST /api/pods`
+- `GET /api/pods/:id`
+- `PATCH /api/pods/:id`
+- `DELETE /api/pods/:id`
+- `POST /api/pods/:id/members`
+- `DELETE /api/pods/:id/members/:name`
 
-### 4. Gemini Vision pipeline
-**Status: ✅ Done**
+### LiveKit data channel
 
-- [x] `analyzeFrame(engineerId, podId, jpeg)` calls `gemini-2.0-flash` with structured JSON schema
-- [x] Extracts: `currentFile`, `currentSymbol`, `activity`, `hasUnpushedChanges`, `confidence`
-- [x] Low media resolution for speed, zero thinking budget
-- [x] Called from `agent.ts` → `podman.onScreenFrame()` → `analyzeFrame()` → `recordObservation()`
-- [x] Collision detection runs after every frame: `detectCollisions([...contexts], github)`
+- Topic: `podman.intervention`
+- Core messages:
+  - `COLLISION`: agent -> PWA; contains `collision` and `intervention`.
+  - `ACK`: PWA -> agent/API; intervention response.
+  - `GIT_REPORT`: local git sidecar -> agent; dirty/unpushed ground truth.
+  - `VOICE_CUE`: text cue/fallback for voice escalation.
 
-**Actual files:** `backend/src/vision/gemini.ts`, `backend/src/agent/podman.ts`
+### Required environment
 
----
+```bash
+LIVEKIT_URL=
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
 
-### 5. Event detector + nudge generator
-**Status: ✅ Done (collision-based, not Gemini-event-detection-based)**
+GEMINI_API_KEY=
+GEMINI_VISION_MODEL=
+GEMINI_LIVE_MODEL=
 
-- [x] `detectCollisions()` — groups engineers by normalized file path, flags when 2+ editing same file with unpushed changes
-- [x] `shouldIntervene()` + `preferredAction()` policy gate (prevents spam)
-- [x] `recallSimilar()` — vector recall elevates severity if prior collision on same file
-- [x] Generates intervention message string (inline, not via Gemini call)
-- [x] Publishes `{ type: 'COLLISION', collision, intervention }` via data channel
-- [x] Calls `speak(room, message)` (currently stub — just logs)
-- [ ] Cooldown per pod not yet implemented (policy gate provides some protection)
+GITHUB_TOKEN=
+GITHUB_REPO=karti-ai/podman
 
-**Actual files:** `backend/src/collision/detector.ts`, `backend/src/agent/podman.ts`, `backend/src/memory/policy.ts`
+MONGODB_URI=
+VOYAGE_API_KEY=
+POD_ROOM=demo-pod
+PORT=8787
 
----
+VITE_BACKEND_URL=http://localhost:8787
+VITE_LIVEKIT_URL=
+```
 
-### 6. Voice via LiveKit
-**Status: ⚠️ Partial — agent structure done, voice is a stub**
-
-- [x] `backend/src/agent.ts` — full LiveKit agent: joins room, subscribes to screen tracks, 1fps sampling
-- [x] `backend/src/voice/live.ts` — `speak(room, message)` function wired into pipeline
-- [x] `room.localParticipant.publishData()` — data channel publish working
-- [ ] `speak()` is a stub — logs message but does NOT produce audio
-- [ ] Gemini Live 2.5 audio streaming not implemented
-- [ ] **Agent not started on server** — `start-podman.sh` has it commented out; needs `pnpm dev:agent` + real LiveKit creds
-
-**To unblock:** Implement real TTS in `speak()` (Gemini TTS → WAV → publish audio track), then uncomment agent window in `start-podman.sh`.
-
-**Actual files:** `backend/src/voice/live.ts`, `backend/src/agent.ts`, `backend/src/agent/podman.ts`
+Keep all non-`VITE_` secrets server-side.
 
 ---
 
-### 7. PWA active session UI
-**Status: ❌ Not started**
+## 7. Critical implementation callouts
 
-- [ ] `frontend/src/components/SessionView.tsx` — active session screen post-join
-- [ ] Teammate status cards (name, inferred file, inferred task)
-- [ ] `RoomEvent.DataReceived` listener for collision/intervention messages from agent
-- [ ] Nudge feed: last 5 interventions, timestamped
-- [ ] "PodMan is watching" indicator
+### LiveKit
 
-**Depends on:** Task 6 (agent producing data channel messages — working even without voice)
+- Screen share is a video track. The backend agent should consume raw screen
+  frames through `@livekit/rtc-node`.
+- The agent must filter screen share, not webcam:
+  `pub.source === TrackSource.SOURCE_SCREENSHARE`.
+- Frontend publishing must tag the track as screen share; otherwise the agent can
+  miss it.
+- Throttle aggressively. Screens can arrive near video frame rate; Gemini should
+  receive sampled frames only.
+- Keep reliable data packets small. Use them for intervention metadata, not
+  screenshots, large diffs, or research dumps. Treat reliable payloads as
+  roughly 15 KiB max.
+- A historical closed `livekit/node-sdks` issue reported high memory use when
+  consuming video; run memory checks during agent frame tests and stop if the
+  loop leaks.
 
-**Files:** `frontend/src/components/SessionView.tsx` (new), `frontend/src/App.tsx` (wire post-join)
+### Gemini
 
----
+- Use structured output for vision: JSON mime type plus response schema.
+- Use low media resolution for ambient screen watching; reserve higher
+  resolution for debugging or targeted inspection.
+- Never expose `GEMINI_API_KEY` to the browser.
+- Gemini Live API is still a risk for the first demo path. Use card + Hermes
+  message first; add browser TTS or pre-generated voice fallback before relying
+  on Gemini Live for stage audio.
+- Keep model IDs in env so preview/availability changes do not require code
+  changes.
 
-## Cut line — below here only if tasks 1–7 done before hour 10
+### MongoDB
 
-### 8. Ownership warm-start demo
-**Status: ⚠️ Partial — memory persists, no warm-start logging**
-- [ ] On agent startup: log "Loading session memory for pod X — N collisions known"
-- [ ] Demo: session 1 cold, session 2 faster — visible in logs
+- Local MongoDB is fine for dev CRUD and memory counts.
+- Atlas or Atlas Local is needed for the sponsor-grade Vector Search story.
+- Build exact-signature recall first:
+  normalized file + symbol + engineer pair + event type + outcome.
+- Writes from the agent should be best-effort. Mongo hiccups should degrade
+  memory, not kill live detection.
+- Do not store raw screenshots or recordings.
 
----
+### GitHub
 
-### 9. GitHub-enriched collision detection
-**Status: ⚠️ Exists but may not be needed for demo**
-- `backend/src/github/client.ts` exists — fetches PR state as `GithubStateSnapshot`
-- Not required for the demo since screen-based `hasUnpushedChanges` is sufficient
+- The repo is public and currently has no issue/PR backlog, so do not make the
+  plan issue-driven yet.
+- GitHub cannot see local dirty files or unpushed commits. That is still a core
+  product moat.
+- Sync PRs should use deterministic GitHub REST/Octokit flows, not browser
+  automation.
+- Verify token scopes and demo repo permissions before stage time.
 
----
+### DigitalOcean
 
-### 10. Backend state endpoint
-**Status: ✅ Done (as pods API)**
-- `GET /api/pods` — returns all pods
-- `GET /api/pods/:id` — returns pod with members
-- No per-engineer state endpoint yet (frontend uses data channel instead)
+- Use App Platform as:
+  - static site for frontend,
+  - HTTP service for API,
+  - worker for the LiveKit agent.
+- Do not model the agent worker as a health-checked HTTP service.
+- Keep a local and recorded fallback even if deployment works; venue network is a
+  stage risk.
 
----
+### Hermes
 
-## What needs to happen next (priority order)
-
-1. **Voice (Task 6)** — implement real `speak()` with Gemini TTS → WAV → LiveKit audio track
-2. **Session UI (Task 7)** — `SessionView.tsx` with data channel listener + nudge feed
-3. **Start agent on server** — uncomment agent window in `start-podman.sh`, ensure LiveKit creds in `backend/.env`
-4. **Git watcher (Task 2b)** — `scripts/podman-agent.mjs` for demo terminals
-
----
-
-## Server state (165.22.129.249)
-
-- Backend: ✅ running on `:8787` (tmux `podman:backend`)
-- Frontend: ✅ running on `:81` (tmux `podman:prod`, port 80 taken)
-- Agent: ❌ NOT running — needs LiveKit creds + `pnpm dev:agent`
-- To start agent: `tmux new-window -t podman -n agent && tmux send-keys -t podman:agent 'cd /root/podman && pnpm --filter @podman/backend dev:agent' C-m`
-- To attach: `ssh root@165.22.129.249` → `tmux attach -t podman`
-
----
-
-## Cut immediately
-
-- Mic transcription or voice input from engineers
-- Manual task input fields on PWA
-- Multilingual voice
-- Slack / Linear / Jira integrations
-- Webcam tracks
-- Always-on raw screen surveillance (1fps sampling is by design)
-- Full task management features
-- User auth / accounts
-
----
-
-## Risk table
-
-| Risk | Mitigation |
-|---|---|
-| Gemini Vision accuracy on screens | Large font (18pt+), single editor window, file tab fully visible. |
-| Gemini Live TTS not implemented | Fallback: `@google/genai` TTS → WAV buffer → publish as audio track manually. |
-| Agent needs HTTPS for screen capture | Demo from localhost or ngrok. PWA has dev mock-join fallback. |
-| Event detection false positives | Policy gate in `shouldIntervene()`. Demo is pre-staged so collisions fire cleanly. |
-| DO deploy: frontend on :81 not :80 | Port 80 taken — either kill the process or update DNS/proxy to :81. |
-| Multiple collisions fire at once | Policy gate prevents spam; same-collision dedup via file+engineers key. |
+- Treat Hermes as the action and messaging layer, not as a replacement for the
+  current implemented backend agent until code changes make that real.
+- Hermes should choose the least intrusive channel:
+  card -> message -> voice.
+- Hermes can own research summaries, teammate notification, sync PR initiation,
+  and urgent escalation once those workflows exist.
 
 ---
 
-## Demo script (3 min)
+## 8. Build ladder
 
-**(0:00)** Three laptops visible. Alice, Bob, Carol join `demo-pod` via PWA. Agent logs `[agent] PodMan joined room demo-pod`.
+Do not mark a rung done until it is proven in logs, UI, or a visible external
+artifact.
 
-**(0:20)** Alice opens `auth/middleware.ts` (18pt font, clearly visible). First frame processed. `[vision] currentFile: auth/middleware.ts`.
+### P0 - make the live loop undeniable
 
-**(0:45)** Bob opens `auth/middleware.ts` too. Carol runs `curl http://localhost:3001/auth` → `connection refused`.
+1. **Preserve and reconcile the plan**
+   - Merge local `docs/PLAN.md` with `origin/main:docs/PLAN.md`.
+   - Keep both the broad product thesis and concrete server/current-state facts.
+   - After the docs are safe, merge or rebase the two newer `origin/main` commits
+     before implementing frontend work.
 
-**(1:20) MONEY MOMENT 1 — COLLISION_DETECTED:**
-PodMan data channel message fires: *"alice and bob are both editing auth/middleware.ts and one has unpushed changes."*
-Voice says it aloud in the room.
+2. **Browser publish proof**
+   - Start backend API and frontend.
+   - Join a real LiveKit room from the browser.
+   - Confirm the browser publishes a screen-share track with the correct source.
 
-**(1:50)** Alice pushes. Bob pulls. Carol's integration unblocks.
+3. **Agent frame proof**
+   - Start `pnpm --filter @podman/backend dev:agent`.
+   - Confirm room join, screen-track subscription, frame sampling, and JPEG
+     encode logs.
+   - Watch process memory while consuming frames.
 
-**(2:20)** Show `GET /api/memory/stats` → `{ observations: 47, collisions: 1, interventions: 1, outcomes: 0 }`. Session 2 warm-start: collision detected in 12s vs 3min cold.
+4. **Gemini vision proof**
+   - Send one live sampled IDE frame to Gemini.
+   - Log parsed JSON with `currentFile`, `currentSymbol`, `activity`,
+     `hasUnpushedChanges`, and `confidence`.
+   - Add a confidence/logging gate if noisy frames cause bad reads.
 
-**(2:45)** Close: *"PodMan — the teammate that sees what Slack can't."*
+5. **Scheduled git truth** ✅ partial
+   - `scripts/podman-agent.mjs` polls every 15 s: `git status --short`,
+     `git diff --stat HEAD`, `git log --oneline -1`, `git branch --show-current`.
+   - Upserts `changedFiles`, `diffStat`, `recentCommit`, `branch`, `gitUpdatedAt`
+     to `engineer_states` collection in MongoDB (upsert by `podId::name` key).
+   - **Still needed:** fuse `engineer_states` git fields into the collision
+     detector, and/or publish `GIT_REPORT` data channel messages so the agent
+     worker can incorporate git truth into vision-based decisions.
+
+6. **Intervention card + Hermes notification**
+   - Publish a real intervention on `podman.intervention`.
+   - Render it as a small card in the frontend.
+   - Route a Hermes message to the affected teammate(s) or project channel once
+     the bridge exists.
+
+7. **Background research recommendation**
+   - When the team is heading into a poor tool/repo/skill choice or dead end,
+     produce a recommendation card with short evidence.
+   - Minimum evidence: why it matters, what to use instead, and who should act.
+
+8. **Learning proof**
+   - First intervention writes observation/collision/recommendation/outcome
+     memory.
+   - Second similar situation retrieves exact prior memory and changes the
+     message: "I have seen this pattern before."
+
+9. **Urgency routing**
+   - Default to card.
+   - Escalate to Hermes message when coordination involves other teammates.
+   - Escalate to voice only when urgent.
+
+10. **Action artifact**
+    - If demo uses same-file collision, click the card to open a real draft sync
+      PR or visible GitHub artifact.
+    - If demo uses research recommendation, show the accepted recommendation and
+      memory outcome instead.
+
+11. **Deployment or fallback proof**
+    - Prove API/static/worker deployment together, or explicitly run local with a
+      recorded backup.
+    - Keep backup video on a separate device.
+
+### P1 - polish the money moment
+
+- Add visible live inference captions in the PWA.
+- Add a small memory stats panel backed by `/api/memory/stats`.
+- Add browser-side TTS or pre-generated voice fallback for urgent interventions.
+- Add Hermes notification bridge once the target channel is chosen.
+- Improve research cards with compatibility, install effort, docs quality, repo
+  health, and security/trust signals.
+
+### P2 - sponsor and scale polish
+
+- Implement Voyage embedding + Atlas Vector Search recall.
+- Improve policy learning from outcomes.
+- Deploy DigitalOcean static site + API service + worker as the submission path.
+- Add optional GitHub issue/PR backlog integration after issues/PRs actually
+  exist.
+
+### Cut if behind
+
+- Webcam grid.
+- Mic transcription.
+- Full auth/accounts.
+- Slack/Linear/Jira integrations unless Hermes requires one immediately.
+- Complex dashboards.
+- Server-published audio if browser/pre-generated voice proves escalation.
+- Vector Search if exact Mongo recall demonstrates the learning beat.
 
 ---
 
-## Pre-demo checklist (day of)
+## 9. Critical 3-minute demo script
 
-See `docs/demo-setup.md` for full laptop setup. Key items:
+**Rule:** open on one active IDE, not a grid. PodMan is an agent, not a
+dashboard.
 
-- [ ] All laptops: font 18pt+, single editor window, file tab visible
-- [ ] `demo-pod` created in LiveKit Cloud, creds in `backend/.env`
-- [ ] Agent running: `tmux attach -t podman` → check `agent` window
-- [ ] `GET /health` returns OK on deployed URL
-- [ ] Earbuds tested — voice audible through browser
-- [ ] Backup video recorded and on separate device
-- [ ] Demo rehearsed 3×
+1. **0:00 - Set the scene**
+   - One engineer is actively coding in the IDE.
+   - The presenter says: "This work is not pushed yet. GitHub cannot see it."
+
+2. **0:20 - Show the live signal**
+   - Show a compact caption: current file, inferred task, git dirty/unpushed
+     state.
+   - Show that PodMan is watching consented screen context, not stored
+     recordings.
+
+3. **0:40 - Introduce the better-tool moment**
+   - A teammate starts down a weak path: wrong package, dead repo, bad API,
+     duplicated effort, or risky implementation.
+   - PodMan has been researching in the background.
+
+4. **1:05 - Money moment**
+   - PodMan shows a small card:
+     "This path is likely a dead end. Use X instead; it matches our stack and is
+     actively maintained."
+   - The card names the affected teammate and the suggested action.
+
+5. **1:25 - Hermes coordination**
+   - Hermes notifies the right teammate(s), not the whole room.
+   - No voice yet unless the situation is urgent.
+
+6. **1:50 - Learning beat**
+   - A similar issue appears.
+   - PodMan references memory:
+     "I have seen this pattern before. Last time the team accepted the X
+     recommendation."
+   - Show `/api/memory/stats` or the visible memory indicator.
+
+7. **2:20 - Urgency escalation**
+   - Raise the severity with a same-file collision, blocking dependency, failing
+     test, or imminent bad push.
+   - Hermes escalates to voice only now.
+
+8. **2:40 - Close**
+   - Show the public repo, deployed/local URL, and memory stats.
+   - Closing line: "PodMan coordinates work while it is still happening."
+
+### Reliable fallback demo
+
+If the research recommendation is not reliable by stage time, use the same-file
+collision fallback:
+
+1. Two engineers open the same visible file.
+2. `GIT_REPORT` or vision marks one as dirty/unpushed.
+3. Agent publishes `COLLISION` on `podman.intervention`.
+4. Frontend renders the card.
+5. The card opens a sync PR artifact.
+6. A second similar collision retrieves prior memory.
+
+---
+
+## 10. Sponsor strategy
+
+### Gemini
+
+Gemini must be load-bearing for the vision loop:
+
+- live IDE/screen frame -> structured work context,
+- optional message/recommendation generation,
+- optional Live voice only after card/Hermes routing is stable.
+
+Do not overclaim voice if it is using browser/pre-generated TTS. Say plainly that
+it is the reliability fallback.
+
+### LiveKit
+
+LiveKit is the real-time spine:
+
+- engineers join one pod room,
+- screen-share tracks carry active work context,
+- PodMan joins as a participant,
+- data packets carry interventions,
+- voice can be added as urgent escalation.
+
+Pitch line: "Unpushed work is invisible to GitHub, so real-time presence is the
+only way to coordinate before the push."
+
+### MongoDB + Voyage
+
+MongoDB is the learning proof:
+
+- observations, collisions, recommendations, interventions, and outcomes persist,
+- prior memory changes a later intervention,
+- exact recall is the MVP,
+- Voyage + Atlas Vector Search is the stronger sponsor-grade version after exact
+  recall works.
+
+### DigitalOcean
+
+DigitalOcean earns its place when:
+
+- frontend runs as a static site,
+- API runs as an HTTP service,
+- LiveKit agent runs as a worker,
+- public URL is shown in submission or demo.
+
+Local fallback is acceptable for stage reliability, but the submission should
+include the deployment URL if possible.
+
+---
+
+## 11. Risks and mitigations
+
+| Risk                                   | Mitigation                                                                                                                       |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Looks like a dashboard                 | Keep the UI quiet. Hero is card/message/action, not a grid.                                                                      |
+| Looks like a screenshot analyzer       | Always show screen signal + git truth + memory + action.                                                                         |
+| Interrupts too much                    | Default to cards, escalate to Hermes messages, reserve voice for urgency.                                                        |
+| Overclaims implemented features        | Mark voice, Hermes bridge, vectors, adaptive policy, research agent, real sync PR, and DO worker deploy incomplete until proven. |
+| Vision misses unpushed state           | Use scheduled `GIT_REPORT` for deterministic dirty/unpushed truth.                                                               |
+| Research recommendation lacks evidence | Show only concise evidence: stack fit, repo/tool health, install effort, docs/trust signal.                                      |
+| No visible learning                    | Build exact Mongo recall before vector search.                                                                                   |
+| LiveKit frame loop leaks memory        | Monitor agent memory during video consumption; throttle hard.                                                                    |
+| GitHub issue/PR backlog absent         | Do not invent issue-driven backlog; repo currently has no issues or PRs.                                                         |
+| Venue network failure                  | Rehearse on hotspot and keep recorded backup.                                                                                    |
+| DO worker deploy hangs                 | Deploy agent as worker, not health-checked service.                                                                              |
+
+---
+
+## 12. Documentation reconciliation tasks
+
+After this plan is accepted, update the supporting docs so they stop conflicting
+with this file:
+
+- `README.md`: replace POST-screenshot-first language with LiveKit screen-track
+  agent architecture and Hermes action-layer wording.
+- `docs/idea.md`: broaden from blocker/dependency voice demo to card/message/
+  urgent-voice coordination plus research and memory.
+- `docs/livekit.md`: remove "Hermes does NOT subscribe to engineer screen
+  tracks"; current architecture uses backend agent screen subscription.
+- `docs/gemini.md`: keep structured vision, but mark Gemini Live as P1 and avoid
+  claiming voice is implemented.
+- `docs/mongodb.md`: align collection names with current code
+  (`observations`, `collisions`, `interventions`, `outcomes`, `pods`) and add
+  exact-signature recall.
+- `docs/digitalocean.md`: split API service and agent worker; do not deploy the
+  worker as a health-checked HTTP service; mark `infra/app.yaml` legacy or
+  reconcile it with `infra/.do/app.yaml`.
+- `docs/demo-setup.md`: update the script to include better-tool research,
+  learning recall, Hermes notification, and urgency-based voice.
+
+---
+
+## 13. Acceptance checklist
+
+Before saying PodMan is demo-ready:
+
+- [ ] `pnpm format:check` passes or all failures are documented as unrelated.
+- [ ] `pnpm typecheck` passes.
+- [ ] Browser joins a real LiveKit room.
+- [ ] Browser publishes a screen-share track with the correct source.
+- [ ] Backend agent subscribes to the screen-share track.
+- [ ] Agent logs at least one parsed Gemini context from a real IDE screen.
+- [x] Local git report supplies dirty/unpushed truth on a schedule (`scripts/podman-agent.mjs` — 15 s poll → MongoDB `engineer_states`). Agent fusion still needed.
+- [ ] Frontend renders a real intervention card.
+- [ ] Hermes notification path works for teammate messages.
+- [ ] Voice is heard only for urgent escalation or a fallback is declared.
+- [ ] Outcome ACK writes to MongoDB.
+- [ ] `/api/memory/stats` shows counts increasing.
+- [ ] Second similar situation uses prior memory in the message.
+- [ ] Research recommendation card is evidence-backed, or fallback collision demo
+      is used.
+- [ ] Sync PR action creates a visible GitHub artifact if used in demo.
+- [ ] DigitalOcean deployment or local fallback is rehearsed.
+- [ ] Backup recording is ready on a separate device.
+
+---
+
+## 14. Evidence appendix
+
+### Repo and GitHub state
+
+- Public repo: <https://github.com/karti-ai/podman>
+- Verified with authenticated `gh` on `2026-06-27`.
+- Default branch: `main`.
+- No GitHub issues or PRs existed at verification time.
+
+### Hackathon / event
+
+- AI Engineer World's Fair: <https://www.ai.engineer/worldsfair/2026>
+- Cerebral Valley hackathon page:
+  <https://cerebralvalley.ai/e/aiewf-hackathon-2026>
+
+### LiveKit
+
+- Screen share docs: <https://docs.livekit.io/transport/media/screenshare/>
+- Data packets docs: <https://docs.livekit.io/transport/data/packets/>
+- Node SDK reference: <https://docs.livekit.io/reference/client-sdk-node/>
+- Node SDK releases: <https://github.com/livekit/node-sdks/releases>
+- Node SDK issue risk: <https://github.com/livekit/node-sdks/issues/444>
+
+### Gemini
+
+- Structured output:
+  <https://ai.google.dev/gemini-api/docs/structured-output>
+- Media resolution: <https://ai.google.dev/gemini-api/docs/media-resolution>
+- Live API: <https://ai.google.dev/gemini-api/docs/live-api>
+
+### DigitalOcean
+
+- App Platform app spec:
+  <https://docs.digitalocean.com/products/app-platform/reference/app-spec/>
+
+### MongoDB
+
+- Vector Search index type:
+  <https://www.mongodb.com/docs/vector-search/index/vector-search-type/>
+- Node driver Atlas Vector Search:
+  <https://www.mongodb.com/docs/drivers/node/current/atlas-vector-search/>
