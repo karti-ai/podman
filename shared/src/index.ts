@@ -8,3 +8,4 @@ export type {
   SuggestedAction,
   SuggestedActionKind,
 } from './intervention.js';
+export * from './messages.js';
