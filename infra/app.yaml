@@ -1,0 +1,26 @@
+# DigitalOcean App Platform spec for the PodMan backend.
+# Deploy:  doctl apps create --spec infra/app.yaml
+name: podman
+region: nyc
+services:
+  - name: backend
+    dockerfile_path: infra/Dockerfile
+    source_dir: /
+    github:
+      repo: karti-ai/podman
+      branch: main
+      deploy_on_push: true
+    http_port: 8787
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    health_check:
+      http_path: /health
+    envs:
+      - { key: LIVEKIT_URL, scope: RUN_TIME }
+      - { key: LIVEKIT_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: LIVEKIT_API_SECRET, scope: RUN_TIME, type: SECRET }
+      - { key: GEMINI_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: GITHUB_TOKEN, scope: RUN_TIME, type: SECRET }
+      - { key: GITHUB_REPO, scope: RUN_TIME }
+      - { key: MONGODB_URI, scope: RUN_TIME, type: SECRET }
+      - { key: VOYAGE_API_KEY, scope: RUN_TIME, type: SECRET }
