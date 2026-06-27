@@ -28,7 +28,7 @@ Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures
 ---
 
 ### 2. PWA frame capture
-**Owner:** Zander | **Est:** 1.5h | **Depends on:** task 1 stub
+**Owner:** Shakthi | **Est:** 1.5h | **Depends on:** task 1 stub
 
 - [ ] After joining pod, start capture loop: `setInterval` every 30s
 - [ ] `getDisplayMedia` already running — grab frame from existing screen track via `ImageBitmap` → `OffscreenCanvas` → `toBlob('image/jpeg', 0.7)`
@@ -37,6 +37,32 @@ Engineers join a LiveKit room with earbuds. Each engineer's browser PWA captures
 - [ ] Stop loop on disconnect
 
 **Files:** `frontend/src/lib/capture.ts` (new), `frontend/src/lib/pod.ts` (start capture after connect)
+
+---
+
+### 2b. Local git watcher script
+**Owner:** Ramis | **Est:** 1.5h | **Depends on:** task 1, task 3 (schema)
+
+A tiny Node.js script each engineer runs once in a terminal on their machine. Writes git signals **directly to MongoDB Atlas** every 15s — no HTTP to Hermes. Hermes reads merged state (vision + git) from Atlas when running event detection.
+
+- [ ] `scripts/podman-agent.mjs` — CLI script, no extra dependencies beyond Node.js + `mongodb` driver
+- [ ] Args: `--name alice --pod demo-pod` (reads `MONGODB_URI` from env or `.env` in repo root)
+- [ ] Every 15s: shell out to `git status --short`, `git diff --stat HEAD`, `git log --oneline -1`, `git branch --show-current`
+- [ ] Upsert into `engineer_states` (same collection as vision pipeline) — update only git fields, leave vision fields untouched:
+  ```ts
+  { $set: { changedFiles, diffStat, recentCommit, branch, gitUpdatedAt } }
+  ```
+- [ ] On startup: log `[podman-agent] alice connected to demo-pod — watching git every 15s`
+- [ ] Graceful exit on Ctrl+C
+
+**Usage:**
+```bash
+node scripts/podman-agent.mjs --name alice --pod demo-pod
+```
+
+**Why MongoDB-direct (not POST /ingest):** git signals and vision signals update at different rates and from different sources. MongoDB is the shared state bus — Hermes reads merged state, not two separate streams.
+
+**Files:** `scripts/podman-agent.mjs` (new)
 
 ---
 
@@ -103,7 +129,7 @@ Highest integration risk — do as a team.
 ---
 
 ### 7. PWA active session UI
-**Owner:** Zander | **Est:** 1.5h | **Depends on:** tasks 2, 6
+**Owner:** Shakthi | **Est:** 1.5h | **Depends on:** tasks 2, 6
 
 - [ ] Active session screen (post-join — replace current "Connected" placeholder)
 - [ ] Teammate status cards: name, inferred file, inferred task — polled from backend via `GET /pods/:podId/state` or updated via data channel
@@ -164,7 +190,7 @@ Highest integration risk — do as a team.
 | **Karti** | 1 (env + health), 3 (MongoDB layer), 10 (state endpoint) | ~3–4h |
 | **Ramis** | 4 (Gemini Vision pipeline), part of 2 (capture help) | ~3h |
 | **Yahya** | 5 (event detector + nudge generator), 9 (duplicate work) | ~3h |
-| **Zander** | 2 (PWA frame capture), 7 (active session UI) | ~3h |
+| **Shakthi** | 2 (PWA frame capture), 7 (active session UI) | ~3h |
 | **Everyone** | 6 (Gemini Live + LiveKit Agents voice) | ~2h |
 
 ---

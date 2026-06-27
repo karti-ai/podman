@@ -8,25 +8,39 @@ MongoDB Atlas is PodMan's shared memory. It stores live engineer state, the owne
 
 ### `engineer_states`
 
-Latest context per engineer. Upserted on every successful `/ingest` call.
+Latest context per engineer. Two writers, one collection — vision pipeline upserts vision fields, git watcher script upserts git fields independently. Hermes reads the merged document for event detection.
 
 ```ts
 {
-  _id: string,                    // engineerId (stable across sessions)
+  _id: string,                       // engineerId (stable across sessions)
   podId: string,
-  name: string,                   // display name
-  currentFile: string | null,     // from Gemini Vision
-  inferredTask: string | null,    // from Gemini Vision
+  name: string,                      // display name
+
+  // --- Vision fields (written by Hermes via POST /ingest) ---
+  currentFile: string | null,        // active file inferred from screen
+  inferredTask: string | null,       // what engineer appears to be doing
   terminalVisible: boolean,
   recentTerminalOutput: string | null,
-  confidence: number,             // last frame confidence (0–1)
-  updatedAt: Date
+  confidence: number,                // Gemini Vision confidence (0–1)
+  visionUpdatedAt: Date,
+
+  // --- Git fields (written directly by scripts/podman-agent.mjs) ---
+  changedFiles: string[],            // files with uncommitted changes (git status)
+  diffStat: string | null,           // e.g. "auth/middleware.ts | 24 +++++"
+  recentCommit: string | null,       // most recent commit message
+  branch: string | null,             // current branch name
+  gitUpdatedAt: Date,
+
+  // --- Shared ---
+  updatedAt: Date                    // most recent write from either source
 }
 ```
 
 **Index:** `{ podId: 1, updatedAt: -1 }`
 
-**Usage:** Hermes reads all documents for a given `podId` after each update to run event detection across the full team.
+**Two writers, no conflict:** vision upsert uses `$set` on vision fields only; git upsert uses `$set` on git fields only. MongoDB upsert semantics merge them cleanly.
+
+**Usage:** Hermes reads all documents for a given `podId` after each update to run event detection. Both vision and git context are available in the same document — `changedFiles` provides ground truth, `currentFile` provides screen context.
 
 ---
 
