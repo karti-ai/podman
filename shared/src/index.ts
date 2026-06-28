@@ -18,6 +18,10 @@ export type {
   PodGraphNodeKind,
   PodGraphEdgeKind,
   PodGraphNodeStatus,
+  LearningStage,
+  LearningStageKey,
+  ActivityEvent,
+  ActivityKind,
   GraphNodeDoc,
   GraphEdgeDoc,
 } from './graph.js';

@@ -6,6 +6,13 @@ import type {
   PodGraphNodeKind,
   PodGraphEdgeKind,
   PodGraphNodeStatus,
+  LearningStage,
+  LearningStageKey,
+  ActivityEvent,
+  EngineerContext,
+  Collision,
+  Intervention,
+  InterventionOutcome,
 } from '@podman/shared';
 import { collections, getGitStates, getDb } from '../memory/db.js';
 
@@ -147,6 +154,185 @@ function layout(nodes: PodGraphNode[]): void {
 }
 
 const SEVERITY_WEIGHT: Record<string, number> = { info: 0.4, warn: 0.7, critical: 1 };
+
+/** Parse any timestamp-ish value to epoch ms (0 when missing/unparseable). */
+function ms(t: string | Date | null | undefined): number {
+  if (!t) return 0;
+  const v = new Date(t).getTime();
+  return Number.isFinite(v) ? v : 0;
+}
+
+const OBSERVE_WINDOW_MS = 60_000;
+
+/**
+ * Live counts for the learning-loop rail (observe→store→predict→outcome→adapt).
+ * The "active" stage is the one whose latest underlying event is most recent —
+ * with deeper stages winning ties so the rail lights up at the furthest point
+ * the pod reached this session. Additive: derived from already-fetched docs.
+ */
+function buildLoop(opts: {
+  now: number;
+  observations: EngineerContext[];
+  collisions: Collision[];
+  outcomes: InterventionOutcome[];
+  riskPaths: number;
+  vectorCount: number;
+  learnedOwners: number;
+}): LearningStage[] {
+  const { now, observations, collisions, outcomes, riskPaths, vectorCount, learnedOwners } = opts;
+
+  const recentObs = observations.filter((o) => now - ms(o.observedAt) < OBSERVE_WINDOW_MS).length;
+  const rate = (recentObs / 60).toFixed(1);
+  const accepted = outcomes.filter((o) => o.accepted).length;
+  const dismissed = outcomes.filter((o) => !o.accepted).length;
+
+  // Latest event time per stage; `store` sits just behind `predict` so a shared
+  // collision timestamp resolves to PREDICT rather than STORE.
+  const latestObs = Math.max(0, ...observations.map((o) => ms(o.observedAt)));
+  const latestCol = Math.max(0, ...collisions.map((c) => ms(c.detectedAt)));
+  const latestOut = Math.max(0, ...outcomes.map((o) => ms(o.recordedAt)));
+  const latestAdapt = Math.max(
+    0,
+    ...outcomes.filter((o) => o.accepted && o.wasRealCollision).map((o) => ms(o.recordedAt)),
+  );
+
+  const refs: Array<[LearningStageKey, number]> = [
+    ['observe', latestObs],
+    ['store', latestCol ? latestCol - 1 : 0],
+    ['predict', latestCol],
+    ['outcome', latestOut],
+    ['adapt', latestAdapt],
+  ];
+  let activeKey: LearningStageKey = 'observe';
+  let best = 0;
+  for (const [k, t] of refs) {
+    if (t > 0 && t >= best) {
+      best = t;
+      activeKey = k;
+    }
+  }
+
+  const stages: Array<Omit<LearningStage, 'active'>> = [
+    { key: 'observe', title: 'OBSERVE', value: String(recentObs), detail: `~${rate}/s vision contexts` },
+    { key: 'store', title: 'STORE', value: String(vectorCount), detail: 'memory vectors · Atlas' },
+    {
+      key: 'predict',
+      title: 'PREDICT',
+      value: String(riskPaths),
+      detail: `open risk path${riskPaths === 1 ? '' : 's'}`,
+    },
+    { key: 'outcome', title: 'OUTCOME', value: `${accepted}/${dismissed}`, detail: 'accepted · dismissed' },
+    {
+      key: 'adapt',
+      title: 'ADAPT',
+      value: String(learnedOwners),
+      detail: `learned owner${learnedOwners === 1 ? '' : 's'}`,
+    },
+  ];
+  return stages.map((s) => ({ ...s, active: s.key === activeKey }));
+}
+
+/**
+ * Merge + time-sort recent events into the activity stream feed. Reuses the same
+ * de-noise (isFilePath / ENGINEER_NOISE / signature collapse) as the graph so
+ * the feed never shows junk paths or test-artifact engineers. Capped to 8.
+ */
+function buildActivity(opts: {
+  observations: EngineerContext[];
+  collisions: Collision[];
+  interventions: Intervention[];
+  outcomes: InterventionOutcome[];
+  ownership: Record<string, string>;
+}): ActivityEvent[] {
+  const { observations, collisions, interventions, outcomes, ownership } = opts;
+  const cleanEng = (n: string): boolean => Boolean(n) && !ENGINEER_NOISE.test(n);
+  const out: ActivityEvent[] = [];
+
+  // editing — newest observation per (engineer, file); observations arrive desc.
+  const seenEdit = new Set<string>();
+  for (const o of observations) {
+    if (!o.engineerId || !cleanEng(o.engineerId)) continue;
+    const file = o.currentFile ? normalizeFile(o.currentFile) : '';
+    if (!isFilePath(file)) continue;
+    const key = `${o.engineerId.toLowerCase()}|${file}`;
+    if (seenEdit.has(key)) continue;
+    seenEdit.add(key);
+    out.push({
+      id: `edit:${o.engineerId}:${file}`,
+      at: o.observedAt,
+      kind: 'editing',
+      text: `${o.engineerId} opened ${shortLabel(file)}${
+        o.hasUnpushedChanges ? ' — unpushed changes' : ''
+      }`,
+    });
+  }
+
+  // collision — collapse by signature, newest first.
+  const seenCol = new Set<string>();
+  for (const c of collisions) {
+    const file = normalizeFile(c.file);
+    if (!isFilePath(file)) continue;
+    const sig = (c as { memorySignature?: string }).memorySignature ?? `${file}#${c.symbol ?? ''}`;
+    if (seenCol.has(sig)) continue;
+    seenCol.add(sig);
+    const engs = c.engineers.filter(cleanEng);
+    if (!engs.length) continue;
+    out.push({
+      id: `col:${c.id}`,
+      at: c.detectedAt,
+      kind: 'collision',
+      text: `${c.severity === 'critical' ? 'Critical overlap' : 'Overlap'} on ${shortLabel(
+        file,
+      )} · ${engs.join(' + ')}`,
+    });
+  }
+
+  // warns — interventions PodMan raised.
+  for (const iv of interventions) {
+    if (!iv.message) continue;
+    const msg = iv.message.length > 64 ? `${iv.message.slice(0, 61)}…` : iv.message;
+    out.push({
+      id: `warn:${iv.id}`,
+      at: iv.createdAt,
+      kind: 'warns',
+      text: `PodMan: "${msg}" → card sent`,
+    });
+  }
+
+  // outcome + learned_from — the supervised learning beat.
+  const colById = new Map(collisions.map((c) => [c.id, c]));
+  const ivById = new Map(interventions.map((i) => [i.id, i]));
+  for (const o of outcomes) {
+    if (!o.accepted) continue;
+    out.push({
+      id: `out:${o.interventionId}`,
+      at: o.recordedAt,
+      kind: 'outcome',
+      text: 'Intervention accepted by the pod',
+    });
+    if (!o.wasRealCollision) continue;
+    const iv = ivById.get(o.interventionId);
+    const col = iv ? colById.get(iv.collisionId) : colById.get(o.collisionId);
+    if (!col) continue;
+    const file = normalizeFile(col.file);
+    if (!isFilePath(file)) continue;
+    const owner =
+      (o as { learnedOwner?: string }).learnedOwner ??
+      ownership[file] ??
+      col.engineers.find(cleanEng) ??
+      col.engineers[0];
+    if (!owner) continue;
+    out.push({
+      id: `learn:${o.interventionId}`,
+      at: o.recordedAt,
+      kind: 'learned_from',
+      text: `Memory updated: ${owner} owns ${shortLabel(file)} (confidence ↑)`,
+    });
+  }
+
+  out.sort((a, b) => ms(b.at) - ms(a.at));
+  return out.slice(0, 8);
+}
 
 export async function materializePodGraph(podId: string): Promise<PodGraph | null> {
   const c = await collections();
@@ -363,32 +549,81 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
 
   layout(nodes);
 
+  // Metrics are derived from the FINAL de-noised graph (not raw docs) so the
+  // numbers match what's actually on screen. Counting raw collision signatures /
+  // accepted-outcome rows inflates them with test churn (e.g. 50 "risk paths" for
+  // 2 files), which reads as fake — these count distinct visible entities instead.
+  const finalEdges = [...b.edges.values()];
+
+  // Open risk paths = distinct files carrying a surviving collision (the triangles).
+  const riskFiles = new Set<string>();
+  for (const e of finalEdges) {
+    if (e.kind === 'touches' && b.nodes.get(e.source)?.kind === 'file') riskFiles.add(e.source);
+  }
+  const collisionNodeCount = nodes.filter((n) => n.kind === 'collision').length;
+  const riskPaths = riskFiles.size || collisionNodeCount;
+
+  // Learned owners = distinct engineers PodMan retained as owners from accepted
+  // interventions (the owns / learned_from edges actually drawn).
+  const ownerSet = new Set<string>();
+  for (const e of finalEdges) {
+    if (e.kind === 'learned_from') ownerSet.add(e.target);
+    if (e.kind === 'owns') ownerSet.add(e.source);
+  }
+  const learnedOwners = [...ownerSet].filter((id) => b.nodes.get(id)?.kind === 'engineer').length;
+
   const acceptedReal = outcomeDocs.filter((o) => o.accepted && o.wasRealCollision).length;
   const totalOutcomes = outcomeDocs.length;
-  const riskPaths = new Set(
-    collisionDocs.map(
-      (col) =>
-        (col as { memorySignature?: string }).memorySignature ??
-        `${normalizeFile(col.file)}#${col.symbol ?? ''}`,
-    ),
-  ).size;
+  const acceptRate = totalOutcomes ? Math.round((acceptedReal / totalOutcomes) * 100) : null;
+
   const metrics: PodGraphMetric[] = [
     {
       label: 'Learned owners',
-      value: String(acceptedReal),
-      detail: 'Ownership retained from accepted interventions.',
+      value: String(learnedOwners),
+      detail: 'Distinct owners retained from accepted interventions.',
     },
     {
       label: 'Open risk paths',
       value: String(riskPaths),
-      detail: 'Files with two or more converging editors.',
+      detail: `${riskPaths === 1 ? 'File' : 'Files'} with two or more converging editors.`,
     },
     {
       label: 'Accept rate',
-      value: totalOutcomes ? `${Math.round((acceptedReal / totalOutcomes) * 100)}%` : '—',
-      detail: 'Interventions accepted this session.',
+      value: acceptRate == null ? '—' : `${acceptRate}%`,
+      detail: 'Interventions accepted vs total this session.',
     },
   ];
+
+  // Stored vectors for the STORE stage: prefer a real memory_vectors count,
+  // fall back to collisions carrying an embedding, then to collision count.
+  let vectorCount = 0;
+  try {
+    vectorCount = await db.collection('memory_vectors').countDocuments({ podId });
+  } catch {
+    /* memory_vectors is optional */
+  }
+  if (!vectorCount)
+    vectorCount = collisionDocs.filter(
+      (c) => (c as { embedding?: number[] }).embedding?.length,
+    ).length;
+  if (!vectorCount) vectorCount = collisionDocs.length;
+
+  const loop = buildLoop({
+    now,
+    observations,
+    collisions: collisionDocs,
+    outcomes: outcomeDocs,
+    riskPaths,
+    vectorCount,
+    learnedOwners,
+  });
+  const activity = buildActivity({
+    observations,
+    collisions: collisionDocs,
+    interventions: interventionDocs,
+    outcomes: outcomeDocs,
+    ownership,
+  });
 
   return {
     podId,
@@ -396,5 +631,7 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     nodes,
     edges: [...b.edges.values()],
     metrics,
+    loop,
+    activity,
   };
 }

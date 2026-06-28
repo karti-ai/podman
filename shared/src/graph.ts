@@ -48,6 +48,36 @@ export interface PodGraphMetric {
   detail: string;
 }
 
+/** The five stages of PodMan's continual-learning loop, in order. */
+export type LearningStageKey = 'observe' | 'store' | 'predict' | 'outcome' | 'adapt';
+
+/** One stage of the learning-loop rail (observe→store→predict→outcome→adapt). */
+export interface LearningStage {
+  key: LearningStageKey;
+  /** UPPERCASE display title, e.g. "OBSERVE". */
+  title: string;
+  /** Headline figure for the stage, e.g. "5/s" or "124". */
+  value: string;
+  /** One-line detail under the title. */
+  detail: string;
+  /** True for the single most-recently-active stage (pulses in the UI). */
+  active: boolean;
+}
+
+/** Kind of an activity-stream entry (drives the colored tag). */
+export type ActivityKind = 'editing' | 'collision' | 'warns' | 'outcome' | 'learned_from';
+
+/** One time-tagged entry in the activity stream. */
+export interface ActivityEvent {
+  /** Stable id (source doc id + kind) so the UI can animate diffs. */
+  id: string;
+  /** ISO timestamp the event happened. */
+  at: string;
+  kind: ActivityKind;
+  /** Human-readable line, e.g. "Yahya opened auth.ts — unpushed changes". */
+  text: string;
+}
+
 /** A point-in-time render of a pod's team_model. */
 export interface PodGraph {
   podId: string;
@@ -56,6 +86,10 @@ export interface PodGraph {
   nodes: PodGraphNode[];
   edges: PodGraphEdge[];
   metrics: PodGraphMetric[];
+  /** Continual-learning loop counts (observe→…→adapt). Additive/optional. */
+  loop?: LearningStage[];
+  /** Recent activity feed, most-recent first, capped ~8. Additive/optional. */
+  activity?: ActivityEvent[];
 }
 
 /** One node as a standalone document in the `graph_nodes` collection. */
