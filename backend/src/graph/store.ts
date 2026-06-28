@@ -1,6 +1,7 @@
 import type { PodGraph, GraphNodeDoc, GraphEdgeDoc } from '@podman/shared';
 import { getDb } from '../memory/db.js';
 import { createDemoPodGraph } from './demo.js';
+import { materializePodGraph } from './live.js';
 
 interface TeamModelDoc {
   podId: string;
@@ -14,6 +15,14 @@ interface TeamModelDoc {
  * unreachable — so the demo path never depends on a populated DB.
  */
 export async function loadPodGraph(podId: string): Promise<PodGraph> {
+  // 1. Live: materialize from the real collections (observations/collisions/…).
+  try {
+    const live = await materializePodGraph(podId);
+    if (live) return live;
+  } catch (err) {
+    console.warn(`[graph] live materialize failed, falling back: ${(err as Error).message}`);
+  }
+  // 2. Seeded snapshot embedded in team_model.
   try {
     const db = await getDb();
     const doc = await db.collection<TeamModelDoc>('team_model').findOne({ podId });
@@ -21,6 +30,7 @@ export async function loadPodGraph(podId: string): Promise<PodGraph> {
   } catch (err) {
     console.warn(`[graph] loadPodGraph fell back to demo: ${(err as Error).message}`);
   }
+  // 3. Demo (stage safety — never an empty canvas).
   return createDemoPodGraph(podId);
 }
 
