@@ -9,11 +9,7 @@ import {
   useUser,
 } from '@clerk/react';
 import type { Room } from 'livekit-client';
-import {
-  AlertCircleIcon,
-  RefreshCwIcon,
-  SparklesIcon,
-} from 'lucide-react';
+import { AlertCircleIcon, RefreshCwIcon, SparklesIcon } from 'lucide-react';
 import type { Pod, PodInput } from '@podman/shared';
 import { joinPod } from './lib/pod.js';
 import * as api from './lib/api.js';
@@ -342,9 +338,12 @@ export default function App() {
         <header className="sticky top-0 z-10 -mx-4 border-b bg-background/86 px-4 pb-4 pt-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid size-10 place-items-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
-                PM
-              </div>
+              <img
+                src="/podman-logo.svg"
+                alt=""
+                className="size-11 shrink-0 rounded-lg"
+                aria-hidden="true"
+              />
               <div className="min-w-0">
                 <h1 className="text-[1.95rem] font-semibold leading-none tracking-tight">PodMan</h1>
               </div>
@@ -468,9 +467,12 @@ function AuthGate() {
       <div className="mx-auto flex min-h-screen w-full max-w-[1120px] flex-col px-4 py-4 sm:px-6 lg:px-8">
         <header className="flex items-center justify-between border-b pb-4 pt-2">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
-              PM
-            </div>
+            <img
+              src="/podman-logo.svg"
+              alt=""
+              className="size-11 shrink-0 rounded-lg"
+              aria-hidden="true"
+            />
             <h1 className="text-[1.95rem] font-semibold leading-none tracking-tight">PodMan</h1>
           </div>
           <SignInButton mode="modal">
@@ -485,8 +487,8 @@ function AuthGate() {
               Create your account to enter PodMan
             </h2>
             <p className="mt-3 text-base text-muted-foreground">
-              PodMan saves your context across pods so agents can learn from your work in every
-              room you join.
+              PodMan saves your context across pods so agents can learn from your work in every room
+              you join.
             </p>
           </section>
 

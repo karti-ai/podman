@@ -7,6 +7,37 @@ each engineer is doing, remembers which interventions helped, and nudges the
 team before duplicated work, merge collisions, or missed handoffs slow everyone
 down.
 
+<p align="center">
+  <a href="https://podman.live/">
+    <img
+      alt="Try PodMan live in production"
+      src="https://img.shields.io/badge/TRY%20PODMAN%20LIVE-https%3A%2F%2Fpodman.live-1f6feb?style=for-the-badge"
+    />
+  </a>
+</p>
+
+<h2 align="center">
+  <a href="https://podman.live/">Open the live production app: https://podman.live/</a>
+</h2>
+
+<p align="center">
+  PodMan is already deployed. Click the link above and try the production app.
+</p>
+
+<h2 align="center">
+  <a href="https://youtu.be/bWJIsIWTgr0">Watch the demo video</a>
+</h2>
+
+<p align="center">
+  <a href="https://youtu.be/bWJIsIWTgr0">
+    <img
+      src="https://img.youtube.com/vi/bWJIsIWTgr0/maxresdefault.jpg"
+      alt="PodMan demo video thumbnail"
+      width="760"
+    />
+  </a>
+</p>
+
 [LiveKit](https://livekit.io/) · [MongoDB](https://www.mongodb.com/) ·
 [Gemini](https://ai.google.dev/) · [Hermes](https://hermes-agent.nousresearch.com/) ·
 [Modular MAX](https://www.modular.com/max) ·
@@ -37,6 +68,64 @@ Source image: `~/pic.jpg`, committed as
 | Test Hermes             | `hermes -z 'Reply with exactly: working' --provider gemma4-31b-max --model gemma-4-31B-it`    |
 | Start local development | API, vision agent, and frontend commands are in [Local Development](#local-development)       |
 | Debug production        | Public checks first, then systemd services in [Production Operations](#production-operations) |
+
+## Hackathon Fit
+
+PodMan is built for the **2026 AI Engineer World's Fair Hackathon** theme:
+**Continual Learning**.
+
+It is not a wrapper chatbot or static dashboard. It is a production-running
+agentic coordination system that gets better from real use: every observation,
+collision, intervention, accept, dismiss, suppression, and conversation note
+feeds MongoDB-backed memory so future interventions become sharper and less
+annoying.
+
+| Hackathon target       | How PodMan addresses it                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| Continual Learning     | Learns from real team behavior and accepted/dismissed interventions.                     |
+| Self-Improvement Stack | Uses memory stats, Hermes jobs, production watchdogs, and deployment checks.             |
+| Recursive Intelligence | Gives agents operational memory and feedback loops for improving future coordination.    |
+| Live Demo              | Already deployed at [`https://podman.live/`](https://podman.live/).                      |
+| Technicality           | Combines realtime media, vision, vector recall, graph traversal, memory, and ops agents. |
+| Creativity             | Solves the coordination cost around AI-assisted engineering teams.                       |
+
+### Sponsor Tech Used
+
+| Sponsor / tech | Usage in PodMan                                                                  |
+| -------------- | -------------------------------------------------------------------------------- |
+| DigitalOcean   | Hosts the production app, API, workers, Caddy, and systemd-supervised services.  |
+| LiveKit        | Realtime room layer for screen share, audio, data messages, and agent presence.  |
+| Gemini         | Screen understanding, live room conversation, urgent TTS, embeddings, and music. |
+| MongoDB Atlas  | Durable memory, `$vectorSearch`, `$graphLookup`, user learning, and job logs.    |
+| Modular MAX    | Serves `gemma-4-31B-it` as the long-context reasoning model.                     |
+
+### What To Try
+
+```mermaid
+flowchart LR
+  A["Open podman.live"] --> B["Join a pod"]
+  B --> C["Share screen via LiveKit"]
+  C --> D["Gemini extracts work context"]
+  D --> E["MongoDB recalls prior outcomes"]
+  E --> F["PodMan nudges only when useful"]
+  F --> G["Accept or dismiss"]
+  G --> H["Memory improves next run"]
+
+  classDef action fill:#e8f1ff,stroke:#3366cc,color:#0b1f44;
+  classDef ai fill:#f4edff,stroke:#805ad5,color:#2d1857;
+  classDef memory fill:#fff6df,stroke:#c47f00,color:#3d2b00;
+  class A,B,C,F,G action;
+  class D ai;
+  class E,H memory;
+```
+
+1. Open [`https://podman.live/`](https://podman.live/).
+2. Create or join a pod.
+3. Add teammates and share screens.
+4. Watch PodMan build live context, detect overlap, and surface intervention
+   cards.
+5. Accept or dismiss a card; that feedback becomes memory for the next similar
+   event.
 
 ---
 
