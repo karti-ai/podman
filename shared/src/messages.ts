@@ -10,7 +10,9 @@ export type DataMessage =
   | { type: 'HERMES_MESSAGE'; message: HermesMessage }
   | { type: 'VOICE_CUE'; text: string }
   | { type: 'ACK'; interventionId: string; status: InterventionStatus; note?: string }
-  | { type: 'GIT_REPORT'; report: LocalGitReport };
+  | { type: 'GIT_REPORT'; report: LocalGitReport }
+  /** Any participant → the current test-audio owner: stop publishing the shared beat. */
+  | { type: 'BEAT_STOP' };
 
 /** A targeted teammate/project-channel notification from the Hermes action layer. */
 export interface HermesMessage {

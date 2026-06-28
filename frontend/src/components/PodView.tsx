@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import type { Pod, PodActivityEvent, PodActivityKind, PodActivitySource } from '@podman/shared';
-import { startBeat, type BeatHandle } from '../lib/beat.js';
+import { useBeat } from '../livekit/useBeat.js';
 import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
 import LiveWaveform from '@/components/ruixen/live-waveform';
@@ -109,7 +109,6 @@ export function PodView({
 }) {
   const [participants, setParticipants] = useState<PInfo[]>([]);
   const [sharing, setSharing] = useState(false);
-  const [playingBeat, setPlayingBeat] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [leftStreamOpen, setLeftStreamOpen] = useState(() =>
@@ -119,10 +118,10 @@ export function PodView({
     readStoredBool('podman.teamStreamOpen', true),
   );
   const { active, hermes, voiceCue, actionUrl, respond } = useInterventions(room);
+  const { beat, toggleBeat: runBeat } = useBeat(room);
   const activity = usePodActivity(team.id, me);
 
   const audioRef = useRef<HTMLDivElement>(null);
-  const beatRef = useRef<BeatHandle | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const onLeaveRef = useRef(onLeave);
   onLeaveRef.current = onLeave;
@@ -179,8 +178,6 @@ export function PodView({
 
   useEffect(() => {
     return () => {
-      beatRef.current?.stop();
-      beatRef.current = null;
       screenTrackRef.current?.stop();
       screenTrackRef.current = null;
     };
@@ -194,22 +191,10 @@ export function PodView({
     localStorage.setItem('podman.teamStreamOpen', String(rightStreamOpen));
   }, [rightStreamOpen]);
 
-  async function toggleBeat() {
-    if (!room) return;
+  async function onToggleBeat() {
     setNote(null);
     try {
-      if (playingBeat) {
-        if (beatRef.current) await room.localParticipant.unpublishTrack(beatRef.current.track);
-        beatRef.current?.stop();
-        beatRef.current = null;
-        setPlayingBeat(false);
-      } else {
-        await room.startAudio().catch(() => {});
-        const handle = startBeat();
-        beatRef.current = handle;
-        await room.localParticipant.publishTrack(handle.track, { name: 'podman-beat' });
-        setPlayingBeat(true);
-      }
+      await runBeat();
     } catch (e) {
       setNote(`Audio test failed: ${(e as Error).message}`);
     }
@@ -328,9 +313,9 @@ export function PodView({
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                  <Button variant="outline" onClick={toggleBeat} disabled={!room}>
+                  <Button variant="outline" onClick={onToggleBeat} disabled={!room}>
                     <Volume2Icon data-icon="inline-start" />
-                    {playingBeat ? 'Stop audio' : 'Test audio'}
+                    {beat.on ? (beat.mine ? 'Stop audio' : `Stop (${beat.by})`) : 'Test audio'}
                   </Button>
                   <Button onClick={toggleScreen} disabled={!room}>
                     <MonitorUpIcon data-icon="inline-start" />
@@ -508,7 +493,7 @@ export function PodView({
                   <CardContent>
                     <LiveWaveform
                       processing={!!room}
-                      active={false}
+                      active={beat.on}
                       height={32}
                       barWidth={2}
                       barGap={3}
@@ -517,7 +502,12 @@ export function PodView({
                     <div className="flex flex-col gap-3">
                       <StatusLine label="LiveKit" value={room ? 'connected' : 'offline'} />
                       <StatusLine label="Screen" value={sharing ? 'published' : 'not shared'} />
-                      <StatusLine label="Audio" value={playingBeat ? 'publishing' : 'ready'} />
+                      <StatusLine
+                        label="Audio"
+                        value={
+                          beat.on ? (beat.mine ? 'publishing' : `${beat.by} playing`) : 'ready'
+                        }
+                      />
                       <StatusLine label="Agent" value={podmanPresent ? 'watching' : 'waiting'} />
                     </div>
                   </CardContent>
