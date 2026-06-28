@@ -47,6 +47,7 @@ function observationEvent(doc: EngineerContext): PodActivityEvent {
     actor: doc.engineerId,
     actors: [doc.engineerId],
     file,
+    imageUrl: doc.screenshotDataUrl,
     title: file ? `Working in ${file}` : 'Screen context updated',
     detail: [
       symbol ? `symbol ${symbol}` : undefined,

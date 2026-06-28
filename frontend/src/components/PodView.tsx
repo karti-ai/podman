@@ -802,6 +802,16 @@ function ActivityItem({ event }: { event: PodActivityEvent }) {
             {event.detail}
           </p>
         )}
+        {event.imageUrl && (
+          <div className="mt-2 overflow-hidden rounded-md border bg-muted">
+            <img
+              src={event.imageUrl}
+              alt={activityImageAlt(event)}
+              loading="lazy"
+              className="aspect-video w-full object-cover"
+            />
+          </div>
+        )}
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
           <SourceChip source={event.source} />
           <Badge variant="outline" className="rounded-md px-1.5 py-0 text-[0.68rem] leading-4">
@@ -958,6 +968,11 @@ function SourceChip({ source }: { source: PodActivitySource }) {
 function activityTitle(event: PodActivityEvent): string {
   if (event.kind !== 'observation') return event.title;
   return event.title.startsWith('Screen') ? event.title : `Screen log: ${event.title}`;
+}
+
+function activityImageAlt(event: PodActivityEvent): string {
+  const actor = event.actor ?? event.actors?.[0] ?? 'teammate';
+  return `${actor} screen thumbnail`;
 }
 
 function activityIcon(kind: PodActivityKind) {

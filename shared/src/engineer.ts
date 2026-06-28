@@ -16,6 +16,8 @@ export interface EngineerContext {
   hasUnpushedChanges?: boolean;
   /** 0–1 confidence in this read of the screen. */
   confidence: number;
+  /** Small redacted-size JPEG data URL for sidebar preview, not the full frame. */
+  screenshotDataUrl?: string;
   /** ISO timestamp of the observation this context came from. */
   observedAt: string;
 }

@@ -20,6 +20,7 @@ import { initMemory } from './memory/db.js';
 const POD_ROOM = process.env.POD_ROOM ?? 'demo-pod';
 const HERMES_IDENTITY = 'podman-hermes';
 const SAMPLE_INTERVAL_MS = 1000; // ~1 fps to the vision model
+const SCREEN_THUMBNAIL_WIDTH = 360;
 const SHUTDOWN_GRACE_MS = 5000;
 
 async function agentToken(room: string): Promise<string> {
@@ -91,13 +92,23 @@ async function main() {
 
     try {
       const rgba = event.frame.convert(VideoBufferType.RGBA);
-      const jpeg = await sharp(Buffer.from(rgba.data), {
-        raw: { width: rgba.width, height: rgba.height, channels: 4 },
-      })
-        .resize({ width: 1280, withoutEnlargement: true })
-        .jpeg({ quality: 70 })
-        .toBuffer();
-      await podman.onScreenFrame(engineerId, jpeg);
+      const pixels = Buffer.from(rgba.data);
+      const raw = { width: rgba.width, height: rgba.height, channels: 4 } as const;
+      const [jpeg, thumbnail] = await Promise.all([
+        sharp(pixels, { raw })
+          .resize({ width: 1280, withoutEnlargement: true })
+          .jpeg({ quality: 70 })
+          .toBuffer(),
+        sharp(pixels, { raw })
+          .resize({ width: SCREEN_THUMBNAIL_WIDTH, withoutEnlargement: true })
+          .jpeg({ quality: 42 })
+          .toBuffer(),
+      ]);
+      await podman.onScreenFrame(
+        engineerId,
+        jpeg,
+        `data:image/jpeg;base64,${thumbnail.toString('base64')}`,
+      );
     } finally {
       inFlight.delete(engineerId);
     }

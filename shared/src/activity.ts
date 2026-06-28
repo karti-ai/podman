@@ -14,6 +14,7 @@ export interface PodActivityEvent {
   actor?: string;
   actors?: string[];
   file?: string;
+  imageUrl?: string;
   severity: PodActivitySeverity;
   at: string;
 }

@@ -46,8 +46,9 @@ export class PodMan {
     });
   }
 
-  async onScreenFrame(engineerId: string, jpeg: Buffer): Promise<void> {
+  async onScreenFrame(engineerId: string, jpeg: Buffer, screenshotDataUrl?: string): Promise<void> {
     const ctx = await analyzeFrame(engineerId, this.podId, jpeg);
+    if (screenshotDataUrl) ctx.screenshotDataUrl = screenshotDataUrl;
     this.contexts.set(engineerId, ctx);
     await recordObservation(ctx);
 
