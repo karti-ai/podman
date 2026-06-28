@@ -2,14 +2,8 @@ import { useEffect, useState } from 'react';
 import type { Room } from 'livekit-client';
 import {
   AlertCircleIcon,
-  BrainCircuitIcon,
-  CircleDotIcon,
-  RadioTowerIcon,
   RefreshCwIcon,
   SparklesIcon,
-  UsersIcon,
-  WifiIcon,
-  ShieldCheckIcon,
 } from 'lucide-react';
 import type { Pod, PodInput } from '@podman/shared';
 import { joinPod } from './lib/pod.js';
@@ -19,7 +13,6 @@ import { CreatePodForm } from './components/CreatePodForm.js';
 import { PodView } from './components/PodView.js';
 import { GraphView } from './components/GraphView.js';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -40,7 +33,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 
 const SESSION_KEY = 'podman.session';
-const fmt = new Intl.NumberFormat('en', { notation: 'compact' });
 
 function pathPodId(): string | null {
   const [segment] = window.location.pathname.split('/').filter(Boolean);
@@ -68,7 +60,6 @@ export default function App() {
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [presence, setPresence] = useState<Record<string, string[]>>({});
-  const [memory, setMemory] = useState<api.MemoryStats | null>(null);
   const [joinedPodId, setJoinedPodId] = useState<string | null>(null);
   const [member, setMember] = useState('');
   const [devMode, setDevMode] = useState(false);
@@ -81,14 +72,12 @@ export default function App() {
   async function refresh() {
     setLoading(true);
     try {
-      const [nextPods, nextPresence, nextMemory] = await Promise.all([
+      const [nextPods, nextPresence] = await Promise.all([
         api.listPods(),
         api.getPresence().catch(() => presence),
-        api.getMemoryStats().catch(() => memory),
       ]);
       setPods(nextPods);
       setPresence(nextPresence);
-      setMemory(nextMemory);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -130,13 +119,9 @@ export default function App() {
     let alive = true;
     const tick = async () => {
       try {
-        const [p, m] = await Promise.all([
-          api.getPresence(),
-          api.getMemoryStats().catch(() => memory),
-        ]);
+        const p = await api.getPresence();
         if (alive) {
           setPresence(p);
-          setMemory(m);
         }
       } catch {
         /* presence is best-effort */
@@ -279,14 +264,6 @@ export default function App() {
   }
 
   const showReconnecting = restoring || (joinedPodId !== null && joinedPod === null);
-  const liveNames = Array.from(new Set(Object.values(presence).flat()));
-  const liveTotal = liveNames.length;
-  const totalMembers = pods.reduce((sum, p) => sum + p.members.length, 0);
-  const activeRooms = Object.values(presence).filter((names) => names.length > 0).length;
-  const podManOnline = liveNames.some((name) => name.toLowerCase() === 'podman');
-  const latestActivity = memory
-    ? memory.observations + memory.collisions + memory.interventions + memory.outcomes
-    : 0;
 
   if (joinedPod) {
     return (
@@ -301,45 +278,21 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="sticky top-0 z-10 -mx-4 flex flex-col gap-5 border-b bg-background/86 px-4 pb-5 pt-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <header className="sticky top-0 z-10 -mx-4 border-b bg-background/86 px-4 pb-4 pt-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid size-10 place-items-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
                 PM
               </div>
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-[1.95rem] font-semibold leading-none tracking-tight">
-                    PodMan
-                  </h1>
-                  <Badge variant={podManOnline ? 'default' : 'secondary'}>
-                    <CircleDotIcon data-icon="inline-start" />
-                    {podManOnline ? 'online' : 'standby'}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Live engineering rooms, team memory, and intervention routing.
-                </p>
+                <h1 className="text-[1.95rem] font-semibold leading-none tracking-tight">PodMan</h1>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="h-8 rounded-lg px-3">
-                <ShieldCheckIcon data-icon="inline-start" />
-                Privacy-limited
-              </Badge>
-              <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
-                <RefreshCwIcon data-icon="inline-start" />
-                Refresh
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <StatPill icon={WifiIcon} label="Live" value={fmt.format(liveTotal)} />
-            <StatPill icon={RadioTowerIcon} label="Rooms" value={fmt.format(activeRooms)} />
-            <StatPill icon={UsersIcon} label="Roster" value={fmt.format(totalMembers)} />
-            <StatPill icon={BrainCircuitIcon} label="Memory" value={fmt.format(latestActivity)} />
+            <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
+              <RefreshCwIcon data-icon="inline-start" />
+              Refresh
+            </Button>
           </div>
         </header>
 
@@ -374,9 +327,6 @@ export default function App() {
                   <p className="text-xs font-medium uppercase text-muted-foreground">Workspaces</p>
                   <h2 className="text-xl font-semibold tracking-tight">Active pods</h2>
                 </div>
-                <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-                  Join the room that matches your current workstream.
-                </p>
               </div>
 
               {loading ? (
@@ -420,56 +370,10 @@ export default function App() {
 
             <aside className="flex flex-col gap-4">
               <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
-              <Card>
-                <CardHeader>
-                  <CardTitle>Operating brief</CardTitle>
-                  <CardDescription>Current coordination signals.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <BriefLine label="Notification default" value="Card" />
-                  <BriefLine label="Escalation" value="Hermes voice only when urgent" />
-                  <BriefLine label="Memory events" value={fmt.format(latestActivity)} />
-                  <BriefLine
-                    label="Live people"
-                    value={liveNames.length ? liveNames.join(', ') : 'None'}
-                  />
-                </CardContent>
-              </Card>
             </aside>
           </main>
         )}
       </div>
-    </div>
-  );
-}
-
-function StatPill({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-h-16 items-center gap-3 rounded-lg border bg-card/90 px-3 py-2 shadow-sm">
-      <div className="grid size-8 place-items-center rounded-md bg-muted">
-        <Icon className="size-4 text-muted-foreground" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-        <p className="text-base font-medium">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function BriefLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-md bg-muted/45 px-3 py-2">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="max-w-44 text-right text-sm font-medium">{value}</span>
     </div>
   );
 }

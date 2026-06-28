@@ -51,7 +51,6 @@ import {
 } from '../lib/api.js';
 import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
-import LiveWaveform from '@/components/ruixen/live-waveform';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarBadge, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -145,7 +144,7 @@ export function PodView({
   const [testingVoice, setTestingVoice] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
-  const [remoteAudioTracks, setRemoteAudioTracks] = useState(0);
+  const [, setRemoteAudioTracks] = useState(0);
   const [micOn, setMicOn] = useState(false);
   const [historyMember, setHistoryMember] = useState<string | null>(null);
   const [history, setHistory] = useState<MemberWorkHistory | null>(null);
@@ -567,8 +566,6 @@ export function PodView({
     }
   }
 
-  const podmanPresent = participants.some((p) => p.name.toLowerCase() === 'podman');
-
   return (
     <SidebarProvider
       open={leftStreamOpen}
@@ -586,7 +583,7 @@ export function PodView({
         title="My stream"
         collapsedLabel="Mine"
         testId="my-stream-sidebar"
-        description={`${me}'s live screen, git, intervention, and conflict log.`}
+        description={`${me}'s activity feed.`}
         events={activity.mine}
         connected={activity.connected}
         open={leftStreamOpen}
@@ -680,12 +677,6 @@ export function PodView({
                     {sharing ? 'Stop sharing' : 'Share screen'}
                   </Button>
                 </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Metric label="Participants" value={participants.length || 1} />
-                <Metric label="Screen" value={sharing ? 'sharing' : 'idle'} />
-                <Metric label="PodMan" value={podmanPresent ? 'online' : 'waiting'} />
               </div>
             </section>
 
@@ -922,41 +913,6 @@ export function PodView({
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Status</CardTitle>
-                    <CardDescription>Connection, media, and agent presence.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <LiveWaveform
-                      processing={!!room || beat.on}
-                      active={false}
-                      height={32}
-                      barWidth={2}
-                      barGap={3}
-                      className="mb-4 px-3 py-2 text-muted-foreground"
-                    />
-                    <div className="flex flex-col gap-3">
-                      <StatusLine label="LiveKit" value={room ? 'connected' : 'offline'} />
-                      <StatusLine label="Screen" value={sharing ? 'published' : 'not shared'} />
-                      <StatusLine
-                        label="Audio"
-                        value={
-                          audioBlocked
-                            ? 'blocked'
-                            : remoteAudioTracks > 0
-                              ? `${remoteAudioTracks} remote track${remoteAudioTracks === 1 ? '' : 's'}`
-                              : beat.on
-                                ? beat.mine
-                                  ? 'publishing'
-                                  : `${beat.by} playing`
-                                : 'ready'
-                        }
-                      />
-                      <StatusLine label="Agent" value={podmanPresent ? 'watching' : 'waiting'} />
-                    </div>
-                  </CardContent>
-                </Card>
               </aside>
             </main>
             <div
@@ -980,7 +936,7 @@ export function PodView({
           title="Team stream"
           collapsedLabel="Team"
           testId="team-stream-sidebar"
-          description="Everyone else in this pod, merged into one realtime feed."
+          description="Team activity feed."
           events={activity.team}
           connected={activity.connected}
           open={rightStreamOpen}
@@ -990,17 +946,6 @@ export function PodView({
         />
       </SidebarProvider>
     </SidebarProvider>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <Card size="sm">
-      <CardContent>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="mt-1 text-lg font-medium">{value}</p>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -1548,7 +1493,7 @@ const ACTIVITY_CATEGORIES: {
   {
     id: 'signal',
     label: 'Signals',
-    hint: 'Screen logs and local git activity routed to this stream.',
+    hint: 'Recent screen and git activity.',
     icon: RadioTowerIcon,
   },
   {
