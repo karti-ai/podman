@@ -56,6 +56,17 @@ export interface PodCollections {
   suppressions: Collection<SuppressionDoc>;
 }
 
+export interface UserPodContextDoc {
+  id: string;
+  clerkUserId: string;
+  podId: string;
+  memberName?: string;
+  action: string;
+  source: 'clerk';
+  observedAt: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
 export async function collections(): Promise<PodCollections> {
   const db = await getDb();
   return {
@@ -141,6 +152,26 @@ export async function initMemory(): Promise<void> {
     [
       'hermes_job_events.job',
       () => db.collection('hermes_job_events').createIndex({ jobId: 1, createdAt: 1 }),
+    ],
+    [
+      'user_pod_context.user',
+      () => db.collection('user_pod_context').createIndex({ clerkUserId: 1, observedAt: -1 }),
+    ],
+    [
+      'user_pod_context.pod',
+      () => db.collection('user_pod_context').createIndex({ podId: 1, observedAt: -1 }),
+    ],
+    [
+      'user_learning_profiles.user',
+      () => db.collection('user_learning_profiles').createIndex({ clerkUserId: 1 }, { unique: true }),
+    ],
+    [
+      'user_learning_profiles.updated',
+      () => db.collection('user_learning_profiles').createIndex({ updatedAt: -1 }),
+    ],
+    [
+      'conversation_notes.identity',
+      () => db.collection('conversation_notes').createIndex({ identity: 1, createdAt: -1 }),
     ],
   ];
   for (const [name, make] of indexes) {

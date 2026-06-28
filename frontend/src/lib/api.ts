@@ -14,11 +14,34 @@ const BACKEND_URL =
     ? 'http://localhost:8787'
     : '');
 
+type AuthTokenGetter = () => Promise<string | null>;
+
+let authTokenGetter: AuthTokenGetter | null = null;
+
+export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
+  authTokenGetter = getter;
+}
+
+async function requestHeaders(init?: HeadersInit): Promise<Headers> {
+  const next = new Headers(init);
+  const token = await authTokenGetter?.();
+  if (token) next.set('authorization', `Bearer ${token}`);
+  return next;
+}
+
+async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    headers: await requestHeaders(init.headers),
+  });
+}
+
 export interface MemoryStats {
   observations: number;
   collisions: number;
   interventions: number;
   outcomes: number;
+  userPodContext?: number;
 }
 
 export interface LiveConversationSession {
@@ -34,6 +57,12 @@ export interface LiveConversationSession {
   endedAt?: string;
 }
 
+export interface UserProfilePayload {
+  displayName?: string;
+  email?: string;
+  imageUrl?: string;
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -42,16 +71,19 @@ async function json<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const JSON_HEADERS = { 'content-type': 'application/json' } as const;
+
 /** Mint a LiveKit token from the backend. */
 export async function fetchToken(params: {
   room: string;
   identity: string;
   name: string;
   githubLogin?: string;
+  profile?: UserProfilePayload;
 }): Promise<{ token: string; url: string }> {
-  const res = await fetch(`${BACKEND_URL}/api/token`, {
+  const res = await apiFetch(`${BACKEND_URL}/api/token`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(params),
   });
   return json(res);
@@ -59,9 +91,9 @@ export async function fetchToken(params: {
 
 /** Record an intervention outcome for the policy learning loop. */
 export async function postOutcome(outcome: InterventionOutcome): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/api/outcome`, {
+  const res = await apiFetch(`${BACKEND_URL}/api/outcome`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(outcome),
   });
   if (!res.ok) throw new Error(`outcome post failed: ${res.status}`);
@@ -73,9 +105,9 @@ export async function createSyncPr(input: {
   summary?: string;
 }): Promise<{ url: string; number: number }> {
   return json(
-    await fetch(`${BACKEND_URL}/api/sync-pr`, {
+    await apiFetch(`${BACKEND_URL}/api/sync-pr`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(input),
     }),
   );
@@ -84,21 +116,21 @@ export async function createSyncPr(input: {
 // --- Pods CRUD ---
 
 export async function listPods(): Promise<Pod[]> {
-  return json(await fetch(`${BACKEND_URL}/api/pods`));
+  return json(await apiFetch(`${BACKEND_URL}/api/pods`));
 }
 
 /** Display names currently connected per pod id (= LiveKit room name). */
 export async function getPresence(): Promise<Record<string, string[]>> {
-  return json(await fetch(`${BACKEND_URL}/api/presence`));
+  return json(await apiFetch(`${BACKEND_URL}/api/presence`));
 }
 
 export async function getMemoryStats(): Promise<MemoryStats> {
-  return json(await fetch(`${BACKEND_URL}/api/memory/stats`));
+  return json(await apiFetch(`${BACKEND_URL}/api/memory/stats`));
 }
 
 export async function getPodActivity(id: string, limit = 80): Promise<PodActivityEvent[]> {
   return json(
-    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/activity?limit=${limit}`),
+    await apiFetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/activity?limit=${limit}`),
   );
 }
 
@@ -116,7 +148,7 @@ export async function getMemberWorkHistory(
   member: string,
 ): Promise<MemberWorkHistory> {
   return json(
-    await fetch(
+    await apiFetch(
       `${BACKEND_URL}/api/pods/${encodeURIComponent(podId)}/members/${encodeURIComponent(
         member,
       )}/history?hours=24&limit=80`,
@@ -124,47 +156,51 @@ export async function getMemberWorkHistory(
   );
 }
 
-export async function createPod(input: PodInput): Promise<Pod> {
+export async function createPod(input: PodInput, profile?: UserProfilePayload): Promise<Pod> {
   return json(
-    await fetch(`${BACKEND_URL}/api/pods`, {
+    await apiFetch(`${BACKEND_URL}/api/pods`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(input),
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ ...input, profile }),
     }),
   );
 }
 
 export async function updatePod(id: string, patch: PodInput): Promise<Pod> {
   return json(
-    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}`, {
+    await apiFetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(patch),
     }),
   );
 }
 
 export async function deletePod(id: string): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error(`delete pod failed: ${res.status}`);
 }
 
-export async function addMember(id: string, name: string): Promise<Pod> {
+export async function addMember(
+  id: string,
+  name: string,
+  profile?: UserProfilePayload,
+): Promise<Pod> {
   return json(
-    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/members`, {
+    await apiFetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/members`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ name, profile }),
     }),
   );
 }
 
 export async function testPodVoice(id: string): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/voice-test`, {
+  const res = await apiFetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/voice-test`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({
       message: 'PodMan voice test. Gemini TTS is playing through LiveKit.',
     }),
@@ -177,16 +213,16 @@ export async function startLiveConversation(
   input: { identity: string; displayName?: string },
 ): Promise<LiveConversationSession> {
   return json(
-    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(podId)}/live-conversation/start`, {
+    await apiFetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(podId)}/live-conversation/start`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(input),
     }),
   );
 }
 
 export async function stopLiveConversation(podId: string, sessionId: string): Promise<void> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BACKEND_URL}/api/pods/${encodeURIComponent(
       podId,
     )}/live-conversation/${encodeURIComponent(sessionId)}/stop`,
@@ -200,7 +236,7 @@ export async function getLiveConversationHermesJob(
   sessionId: string,
 ): Promise<{ job: HermesJob | null; events: HermesJobEvent[] }> {
   return json(
-    await fetch(
+    await apiFetch(
       `${BACKEND_URL}/api/pods/${encodeURIComponent(
         podId,
       )}/live-conversation/${encodeURIComponent(sessionId)}/hermes-job`,
@@ -213,7 +249,7 @@ export async function abortLiveConversationHermesJob(
   sessionId: string,
 ): Promise<{ job: HermesJob | null }> {
   return json(
-    await fetch(
+    await apiFetch(
       `${BACKEND_URL}/api/pods/${encodeURIComponent(
         podId,
       )}/live-conversation/${encodeURIComponent(sessionId)}/hermes-job/abort`,
@@ -224,7 +260,7 @@ export async function abortLiveConversationHermesJob(
 
 export async function removeMember(id: string, name: string): Promise<Pod> {
   return json(
-    await fetch(
+    await apiFetch(
       `${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/members/${encodeURIComponent(name)}`,
       { method: 'DELETE' },
     ),

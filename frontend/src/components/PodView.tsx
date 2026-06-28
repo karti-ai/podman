@@ -56,7 +56,7 @@ import {
 import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Avatar, AvatarBadge, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,24 +100,46 @@ const STREAM_RAIL_WIDTH = '4rem';
 interface PInfo {
   id: string;
   name: string;
+  email?: string;
+  imageUrl?: string;
   isLocal: boolean;
   speaking: boolean;
 }
 
+function profileFromMetadata(metadata?: string): { email?: string; imageUrl?: string } {
+  try {
+    const parsed = JSON.parse(metadata || '{}') as { email?: unknown; imageUrl?: unknown };
+    return {
+      email: typeof parsed.email === 'string' ? parsed.email : undefined,
+      imageUrl: typeof parsed.imageUrl === 'string' ? parsed.imageUrl : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 function snapshot(room: Room, fallbackName: string): PInfo[] {
   const lp = room.localParticipant;
+  const localProfile = profileFromMetadata(lp.metadata);
   const local: PInfo = {
     id: lp.identity,
     name: lp.name || fallbackName,
+    email: localProfile.email,
+    imageUrl: localProfile.imageUrl,
     isLocal: true,
     speaking: lp.isSpeaking,
   };
-  const remotes = Array.from(room.remoteParticipants.values()).map((p) => ({
-    id: p.identity,
-    name: p.name || p.identity,
-    isLocal: false,
-    speaking: p.isSpeaking,
-  }));
+  const remotes = Array.from(room.remoteParticipants.values()).map((p) => {
+    const profile = profileFromMetadata(p.metadata);
+    return {
+      id: p.identity,
+      name: p.name || p.identity,
+      email: profile.email,
+      imageUrl: profile.imageUrl,
+      isLocal: false,
+      speaking: p.isSpeaking,
+    };
+  });
   return [local, ...remotes];
 }
 
@@ -136,11 +158,17 @@ export function PodView({
   room,
   devMode,
   onLeave,
+  currentUserProfile,
 }: {
   team: Pod;
   me: string;
   room: Room | null;
   devMode: boolean;
+  currentUserProfile?: {
+    displayName: string;
+    email?: string;
+    imageUrl?: string;
+  };
   onLeave: () => void;
 }) {
   const [participants, setParticipants] = useState<PInfo[]>([]);
@@ -241,6 +269,7 @@ export function PodView({
     room
       .on(RoomEvent.ParticipantConnected, refresh)
       .on(RoomEvent.ParticipantDisconnected, refresh)
+      .on(RoomEvent.ParticipantMetadataChanged, refresh)
       .on(RoomEvent.ActiveSpeakersChanged, refresh)
       .on(RoomEvent.TrackSubscribed, onAudio)
       .on(RoomEvent.TrackUnsubscribed, onAudioGone)
@@ -252,6 +281,7 @@ export function PodView({
       room
         .off(RoomEvent.ParticipantConnected, refresh)
         .off(RoomEvent.ParticipantDisconnected, refresh)
+        .off(RoomEvent.ParticipantMetadataChanged, refresh)
         .off(RoomEvent.ActiveSpeakersChanged, refresh)
         .off(RoomEvent.TrackSubscribed, onAudio)
         .off(RoomEvent.TrackUnsubscribed, onAudioGone)
@@ -738,6 +768,8 @@ export function PodView({
                           <Participant
                             key={p.id}
                             participant={p}
+                            rosterProfile={team.memberProfiles?.[p.name]}
+                            currentUserProfile={currentUserProfile}
                             onOpenHistory={setHistoryMember}
                           />
                         ))}
@@ -969,11 +1001,28 @@ export function PodView({
 
 function Participant({
   participant,
+  rosterProfile,
+  currentUserProfile,
   onOpenHistory,
 }: {
   participant: PInfo;
+  rosterProfile?: {
+    displayName: string;
+    email?: string;
+    imageUrl?: string;
+  };
+  currentUserProfile?: {
+    displayName: string;
+    email?: string;
+    imageUrl?: string;
+  };
   onOpenHistory: (member: string) => void;
 }) {
+  const localProfile = participant.isLocal ? currentUserProfile : undefined;
+  const profile = {
+    email: participant.email ?? localProfile?.email ?? rosterProfile?.email,
+    imageUrl: participant.imageUrl ?? localProfile?.imageUrl ?? rosterProfile?.imageUrl,
+  };
   return (
     <div
       className={cn(
@@ -983,12 +1032,15 @@ function Participant({
     >
       <div className="flex min-w-0 items-center gap-3">
         <Avatar>
+          {profile.imageUrl && <AvatarImage src={profile.imageUrl} alt={participant.name} />}
           <AvatarFallback>{initials(participant.name)}</AvatarFallback>
           {participant.speaking && <AvatarBadge />}
         </Avatar>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{participant.name}</p>
-          <p className="text-xs text-muted-foreground">{participant.isLocal ? 'you' : 'remote'}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {profile.email ?? (participant.isLocal ? 'you' : 'remote')}
+          </p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">

@@ -11,6 +11,15 @@ export interface Pod {
   description?: string;
   /** Engineer display names PodMan uses when it speaks. */
   members: string[];
+  /** Latest known Clerk/Gmail profile data per member display name. */
+  memberProfiles?: Record<
+    string,
+    {
+      displayName: string;
+      email?: string;
+      imageUrl?: string;
+    }
+  >;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,5 +1,9 @@
 import { getDb } from '../memory/db.js';
 import { getMemberWorkHistory } from '../activity/member-history.js';
+import {
+  buildUserLearningProfile,
+  getUserLearningProfileByIdentity,
+} from '../memory/user-learning.js';
 
 const DEFAULT_LIMIT = 8;
 
@@ -10,7 +14,8 @@ function sinceIso(hours: number): string {
 export async function getLiveConversationContext(podId: string, identity: string) {
   const db = await getDb();
   const since = sinceIso(12);
-  const [pod, history, gitState, collisions, interventions, outcomes] = await Promise.all([
+  const [pod, history, gitState, collisions, interventions, outcomes, userLearningProfile] =
+    await Promise.all([
     db.collection('pods').findOne({ id: podId }, { projection: { _id: 0 } }),
     getMemberWorkHistory(podId, identity, { hours: 24, limit: 30 }).catch(() => null),
     db.collection('engineer_states').findOne(
@@ -44,6 +49,7 @@ export async function getLiveConversationContext(podId: string, identity: string
       .sort({ recordedAt: -1 })
       .limit(DEFAULT_LIMIT)
       .toArray(),
+    getUserLearningProfileByIdentity(identity).catch(() => null),
   ]);
 
   return {
@@ -51,6 +57,7 @@ export async function getLiveConversationContext(podId: string, identity: string
     identity,
     generatedAt: new Date().toISOString(),
     currentGitState: gitState,
+    userLearningProfile,
     memberHistory: history,
     recentCollisions: collisions,
     recentInterventions: interventions,
@@ -76,5 +83,13 @@ export async function recordLiveConversationNote(input: {
     createdAt: new Date().toISOString(),
   };
   await (await getDb()).collection('conversation_notes').insertOne(doc);
+  if (input.identity) {
+    const profile = await getUserLearningProfileByIdentity(input.identity);
+    if (profile) {
+      void buildUserLearningProfile(profile.clerkUserId).catch((err) =>
+        console.warn(`[memory] note user learning refresh failed: ${(err as Error).message}`),
+      );
+    }
+  }
   return { ...doc, _id: undefined };
 }

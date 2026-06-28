@@ -52,6 +52,8 @@ You are in a private 1:1 voice conversation with one developer.
 
 Use PodMan tools before making claims about current work, git state, collisions, blockers,
 team memory, or recent decisions. Keep spoken answers short. Prefer one useful next step.
+For questions about a person's style, goals, past work, collaboration habits, personal context,
+or what they know across pods/sessions, call get_user_learning_profile before answering.
 If a critical collision event arrives, stop the current turn and state the alert immediately.
 To find code, files, symbols, or how something is implemented in the repository, call search_repo.
 For git commit history, authorship, recent changes, or which commit introduced something, call
@@ -129,6 +131,20 @@ class PodManLiveAgent(Agent):
             f"/api/internal/pods/{self.pod_id}/live-context?identity={self.identity}",
         )
         return json.dumps(data, ensure_ascii=True)[:12000]
+
+    @function_tool()
+    async def get_user_learning_profile(self, context: RunContext) -> str:
+        """Get persistent cross-pod, cross-session knowledge about this developer:
+        collaboration style, goals, known work, recent activity, and Hermes history.
+        """
+        data = await asyncio.to_thread(
+            request_json,
+            f"/api/internal/pods/{self.pod_id}/live-context?identity={self.identity}",
+        )
+        profile = data.get("userLearningProfile")
+        if not profile:
+            return "No persistent user learning profile has been built for this developer yet."
+        return json.dumps(profile, ensure_ascii=True)[:10000]
 
     @function_tool()
     async def record_conversation_note(self, context: RunContext, note: str, kind: str = "summary") -> str:

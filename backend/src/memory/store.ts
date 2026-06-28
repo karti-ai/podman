@@ -5,16 +5,19 @@ import type {
   InterventionOutcome,
   InterventionStatus,
 } from '@podman/shared';
-import { collections, getGitStates } from './db.js';
+import { collections, getDb, getGitStates, type UserPodContextDoc } from './db.js';
 import { enrichCollisionMemory } from './vectors.js';
+import { buildUserLearningProfile } from './user-learning.js';
 
 function comparableFile(raw?: string): string {
-  return (raw ?? '')
-    .trim()
-    .replace(/^(\?\?|[MADRCU!]{1,2})\s+/, '')
-    .split(/[\\/]/)
-    .pop()
-    ?.toLowerCase() ?? '';
+  return (
+    (raw ?? '')
+      .trim()
+      .replace(/^(\?\?|[MADRCU!]{1,2})\s+/, '')
+      .split(/[\\/]/)
+      .pop()
+      ?.toLowerCase() ?? ''
+  );
 }
 
 /**
@@ -35,6 +38,30 @@ async function persist(name: string, fn: () => Promise<unknown>): Promise<void> 
 export async function recordObservation(ctx: EngineerContext): Promise<void> {
   await persist('observation', async () =>
     (await collections()).observations.insertOne({ ...ctx }),
+  );
+}
+
+export async function recordUserPodContext(input: {
+  clerkUserId: string;
+  podId: string;
+  memberName?: string;
+  action: string;
+  metadata?: UserPodContextDoc['metadata'];
+}): Promise<void> {
+  await persist('user pod context', async () =>
+    (await getDb()).collection<UserPodContextDoc>('user_pod_context').insertOne({
+      id: `upc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      clerkUserId: input.clerkUserId,
+      podId: input.podId,
+      memberName: input.memberName,
+      action: input.action,
+      source: 'clerk',
+      observedAt: new Date().toISOString(),
+      metadata: input.metadata,
+    }),
+  );
+  void buildUserLearningProfile(input.clerkUserId).catch((err) =>
+    console.warn(`[memory] user learning refresh failed: ${(err as Error).message}`),
   );
 }
 
@@ -163,12 +190,31 @@ export async function recordOutcome(outcome: InterventionOutcome): Promise<void>
 /** Document counts per collection — used by the /api/memory/stats endpoint. */
 export async function memoryStats(): Promise<Record<string, number>> {
   const c = await collections();
-  const [observations, collisions, interventions, outcomes, suppressions] = await Promise.all([
+  const db = await getDb();
+  const [
+    observations,
+    collisions,
+    interventions,
+    outcomes,
+    suppressions,
+    userPodContext,
+    userLearningProfiles,
+  ] = await Promise.all([
     c.observations.estimatedDocumentCount(),
     c.collisions.estimatedDocumentCount(),
     c.interventions.estimatedDocumentCount(),
     c.outcomes.estimatedDocumentCount(),
     c.suppressions.estimatedDocumentCount(),
+    db.collection<UserPodContextDoc>('user_pod_context').estimatedDocumentCount(),
+    db.collection('user_learning_profiles').estimatedDocumentCount(),
   ]);
-  return { observations, collisions, interventions, outcomes, suppressions };
+  return {
+    observations,
+    collisions,
+    interventions,
+    outcomes,
+    suppressions,
+    userPodContext,
+    userLearningProfiles,
+  };
 }

@@ -1,4 +1,13 @@
 import { useEffect, useState } from 'react';
+import {
+  Show,
+  SignUp,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+  useAuth,
+  useUser,
+} from '@clerk/react';
 import type { Room } from 'livekit-client';
 import {
   AlertCircleIcon,
@@ -54,7 +63,13 @@ function replacePath(path: string): void {
   window.history.replaceState({}, '', path || '/');
 }
 
+function firstNameFrom(value: string | null | undefined): string {
+  return value?.trim().split(/\s+/).filter(Boolean)[0] ?? '';
+}
+
 export default function App() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<Set<string>>(new Set());
@@ -68,6 +83,21 @@ export default function App() {
   const [graphPodId, setGraphPodId] = useState<string | null>(null);
 
   const joinedPod = joinedPodId ? (pods.find((p) => p.id === joinedPodId) ?? null) : null;
+  const userEmail = user?.primaryEmailAddress?.emailAddress;
+  const defaultMemberName =
+    user?.firstName?.trim() ||
+    firstNameFrom(user?.fullName) ||
+    firstNameFrom(userEmail?.split('@')[0]);
+  const currentUserProfile = {
+    displayName: defaultMemberName,
+    email: userEmail,
+    imageUrl: user?.imageUrl,
+  };
+
+  useEffect(() => {
+    api.setAuthTokenGetter(isSignedIn ? getToken : null);
+    return () => api.setAuthTokenGetter(null);
+  }, [getToken, isSignedIn]);
 
   async function refresh() {
     setLoading(true);
@@ -98,7 +128,13 @@ export default function App() {
     const previousPath = window.location.pathname;
     setPodPath(podId, replaceRoute);
     try {
-      const result = await joinPod(podId, who, who);
+      const result = await joinPod(
+        podId,
+        who,
+        who,
+        isSignedIn ? getToken : undefined,
+        currentUserProfile,
+      );
       setRoom(result.room);
       setDevMode(result.mode === 'dev');
       setMember(who);
@@ -111,11 +147,15 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!isSignedIn) {
+      setLoading(false);
+      return;
+    }
     void refresh();
-  }, []);
+  }, [isSignedIn]);
 
   useEffect(() => {
-    if (joinedPodId) return;
+    if (!isSignedIn || joinedPodId) return;
     let alive = true;
     const tick = async () => {
       try {
@@ -133,15 +173,13 @@ export default function App() {
       alive = false;
       window.clearInterval(id);
     };
-  }, [joinedPodId]);
+  }, [isSignedIn, joinedPodId]);
 
   useEffect(() => {
+    if (!isSignedIn) return;
     const routedPodId = pathPodId();
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) {
-      if (routedPodId) {
-        setError(`Enter your name to join ${routedPodId}.`);
-      }
       return;
     }
     let saved: { podId: string; member: string };
@@ -162,10 +200,11 @@ export default function App() {
         setRestoring(false);
       }
     })();
-  }, []);
+  }, [isSignedIn]);
 
   useEffect(() => {
     const onPopState = () => {
+      if (!isSignedIn) return;
       const routedPodId = pathPodId();
       if (!routedPodId) {
         room?.disconnect();
@@ -186,7 +225,7 @@ export default function App() {
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [joinedPodId, room]);
+  }, [isSignedIn, joinedPodId, room]);
 
   async function run(key: string, fn: () => Promise<void>) {
     startPending(key);
@@ -206,7 +245,7 @@ export default function App() {
     startPending('new');
     setError(null);
     try {
-      const created = await api.createPod(input);
+      const created = await api.createPod(input, currentUserProfile);
       setPods((cur) => [...cur, created]);
     } catch (e) {
       setError((e as Error).message);
@@ -225,7 +264,7 @@ export default function App() {
       if (pathPodId() === id) setHomePath();
     });
   const handleAddMember = (id: string, name: string) =>
-    run(id, async () => upsert(await api.addMember(id, name)));
+    run(id, async () => upsert(await api.addMember(id, name, currentUserProfile)));
   const handleRemoveMember = (id: string, name: string) =>
     run(id, async () => upsert(await api.removeMember(id, name)));
 
@@ -241,12 +280,15 @@ export default function App() {
     }
   }
 
-  async function handleAddAndJoin(pod: Pod, name: string) {
+  async function handleAddAndJoin(pod: Pod) {
     startPending(pod.id);
     setError(null);
     try {
-      upsert(await api.addMember(pod.id, name));
-      await connectToPod(pod.id, name);
+      if (!defaultMemberName) {
+        throw new Error('Sign in with Clerk before joining a pod.');
+      }
+      upsert(await api.addMember(pod.id, defaultMemberName, currentUserProfile));
+      await connectToPod(pod.id, defaultMemberName);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -265,9 +307,28 @@ export default function App() {
 
   const showReconnecting = restoring || (joinedPodId !== null && joinedPod === null);
 
+  if (!isLoaded) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background text-foreground">
+        <Skeleton className="h-12 w-64" />
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <AuthGate />;
+  }
+
   if (joinedPod) {
     return (
-      <PodView team={joinedPod} me={member} room={room} devMode={devMode} onLeave={handleLeave} />
+      <PodView
+        team={joinedPod}
+        me={member}
+        room={room}
+        devMode={devMode}
+        currentUserProfile={currentUserProfile}
+        onLeave={handleLeave}
+      />
     );
   }
 
@@ -289,10 +350,23 @@ export default function App() {
               </div>
             </div>
 
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
-              <RefreshCwIcon data-icon="inline-start" />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Show when="signed-out">
+                <SignInButton mode="modal">
+                  <Button variant="outline">Sign in</Button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <Button>Sign up</Button>
+                </SignUpButton>
+              </Show>
+              <Show when="signed-in">
+                <UserButton />
+              </Show>
+              <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
+                <RefreshCwIcon data-icon="inline-start" />
+                Refresh
+              </Button>
+            </div>
           </div>
         </header>
 
@@ -342,6 +416,7 @@ export default function App() {
                       pod={pod}
                       busy={pending.has(pod.id)}
                       presence={presence[pod.id] ?? []}
+                      currentUserProfile={currentUserProfile}
                       onJoin={handleJoin}
                       onAddAndJoin={handleAddAndJoin}
                       onAddMember={handleAddMember}
@@ -362,17 +437,63 @@ export default function App() {
                     <EmptyDescription>Create the first room for this team.</EmptyDescription>
                   </EmptyHeader>
                   <EmptyContent>
-                    <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} compact />
+                    <CreatePodForm
+                      busy={pending.has('new')}
+                      defaultMemberName={defaultMemberName}
+                      onCreate={handleCreate}
+                      compact
+                    />
                   </EmptyContent>
                 </Empty>
               )}
             </section>
 
             <aside className="flex flex-col gap-4">
-              <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
+              <CreatePodForm
+                busy={pending.has('new')}
+                defaultMemberName={defaultMemberName}
+                onCreate={handleCreate}
+              />
             </aside>
           </main>
         )}
+      </div>
+    </div>
+  );
+}
+
+function AuthGate() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1120px] flex-col px-4 py-4 sm:px-6 lg:px-8">
+        <header className="flex items-center justify-between border-b pb-4 pt-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid size-10 place-items-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
+              PM
+            </div>
+            <h1 className="text-[1.95rem] font-semibold leading-none tracking-tight">PodMan</h1>
+          </div>
+          <SignInButton mode="modal">
+            <Button variant="outline">Sign in</Button>
+          </SignInButton>
+        </header>
+
+        <main className="grid flex-1 items-center gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_420px]">
+          <section className="max-w-xl">
+            <p className="text-xs font-medium uppercase text-muted-foreground">Team memory</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight">
+              Create your account to enter PodMan
+            </h2>
+            <p className="mt-3 text-base text-muted-foreground">
+              PodMan saves your context across pods so agents can learn from your work in every
+              room you join.
+            </p>
+          </section>
+
+          <div className="flex justify-center lg:justify-end">
+            <SignUp routing="hash" />
+          </div>
+        </main>
       </div>
     </div>
   );

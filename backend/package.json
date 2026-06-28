@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.32",
     "@google/genai": "^2.10.0",
     "@livekit/rtc-node": "^0.13.29",
     "@podman/shared": "workspace:*",

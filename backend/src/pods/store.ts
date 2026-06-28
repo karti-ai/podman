@@ -1,5 +1,5 @@
 import type { Pod, PodInput } from '@podman/shared';
-import { collections } from '../memory/db.js';
+import { collections, getDb, type UserPodContextDoc } from '../memory/db.js';
 
 const NO_ID = { projection: { _id: 0 } } as const;
 
@@ -59,14 +59,67 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function regexExact(value: string): RegExp {
+  return new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+}
+
+function profileString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function matchesMember(doc: UserPodContextDoc, member: string): boolean {
+  const key = member.trim().toLowerCase();
+  return [doc.memberName, doc.metadata?.identity, doc.metadata?.email]
+    .filter(Boolean)
+    .some((value) => String(value).trim().toLowerCase() === key);
+}
+
+async function hydrateMemberProfiles(pod: Pod): Promise<Pod> {
+  if (!pod.members.length) return pod;
+  const db = await getDb();
+  const matchers = pod.members.map(regexExact);
+  const docs = await db
+    .collection<UserPodContextDoc>('user_pod_context')
+    .find(
+      {
+        $or: [
+          { memberName: { $in: matchers } },
+          { 'metadata.identity': { $in: matchers } },
+          { 'metadata.email': { $in: matchers } },
+        ],
+      },
+      { projection: { _id: 0 } },
+    )
+    .sort({ observedAt: -1 })
+    .limit(500)
+    .toArray();
+  const memberProfiles: NonNullable<Pod['memberProfiles']> = {};
+  for (const member of pod.members) {
+    const doc = docs.find((row) => matchesMember(row, member));
+    const imageUrl = profileString(doc?.metadata?.imageUrl);
+    if (!doc || !imageUrl) continue;
+    memberProfiles[member] = {
+      displayName: doc.memberName ?? member,
+      email: profileString(doc.metadata?.email),
+      imageUrl,
+    };
+  }
+  return Object.keys(memberProfiles).length ? { ...pod, memberProfiles } : pod;
+}
+
+async function hydratePods(pods: Pod[]): Promise<Pod[]> {
+  return Promise.all(pods.map((pod) => hydrateMemberProfiles(pod)));
+}
+
 export async function listPods(): Promise<Pod[]> {
   const c = await collections();
-  return c.pods.find({}, NO_ID).sort({ createdAt: 1 }).toArray();
+  return hydratePods(await c.pods.find({}, NO_ID).sort({ createdAt: 1 }).toArray());
 }
 
 export async function getPod(id: string): Promise<Pod | null> {
   const c = await collections();
-  return c.pods.findOne({ id }, NO_ID);
+  const pod = await c.pods.findOne({ id }, NO_ID);
+  return pod ? hydrateMemberProfiles(pod) : null;
 }
 
 export async function createPod(input: PodInput): Promise<Pod> {
@@ -92,7 +145,7 @@ export async function createPod(input: PodInput): Promise<Pod> {
     };
     try {
       await c.pods.insertOne({ ...pod });
-      return pod;
+      return hydrateMemberProfiles(pod);
     } catch (err) {
       if (isDuplicateKey(err)) continue;
       throw err;
@@ -119,7 +172,7 @@ export async function updatePod(id: string, patch: PodInput): Promise<Pod | null
     { $set: set },
     { returnDocument: 'after', projection: { _id: 0 } },
   );
-  return updated ?? null;
+  return updated ? hydrateMemberProfiles(updated) : null;
 }
 
 export async function deletePod(id: string): Promise<boolean> {
@@ -135,7 +188,7 @@ async function setMembers(id: string, members: string[]): Promise<Pod | null> {
     { $set: { members, updatedAt: now() } },
     { returnDocument: 'after', projection: { _id: 0 } },
   );
-  return updated ?? null;
+  return updated ? hydrateMemberProfiles(updated) : null;
 }
 
 export async function addMember(id: string, rawName: unknown): Promise<Pod | null> {

@@ -1,195 +1,263 @@
-# PodMan — A Pair Programmer for Engineering Teams
+# PodMan
 
-[LiveKit](https://livekit.io/)
-[MongoDB](https://www.mongodb.com/)
-[Gemini](https://ai.google.dev/)
-[DigitalOcean](https://www.digitalocean.com/)
+**An ambient pair programmer for engineering teams.**
 
-## The bottleneck moved
+PodMan watches the work happening inside a shared LiveKit room, understands what
+each engineer is doing, remembers which interventions helped, and nudges the
+team before duplicated work, merge collisions, or missed handoffs slow everyone
+down.
 
-Models keep getting better, and more people can build software than ever before.
-Writing the code is no longer the hard part — engineering ability is not the
-ceiling anymore.
+[LiveKit](https://livekit.io/) · [MongoDB](https://www.mongodb.com/) ·
+[Gemini](https://ai.google.dev/) · [Hermes](https://hermes-agent.nousresearch.com/) ·
+[vLLM](https://vllm.ai/) · [DigitalOcean](https://www.digitalocean.com/)
 
-What slows teams down now is everything *around* the code: manually checking each
-other's work, re-planning when two people drift into the same change, and
-constantly asking "what are you working on?" just to stay in sync. People
-naturally want to build together — so as more people start coding, there will be
-thousands of teams bottlenecked not by skill, but by the **speed of human
-coordination.**
+## Read This First
 
-**PodMan is a pair programmer for the whole team.** It watches what every member
-is doing in real time, learns your team's decisions and working dynamics, and
-gives everyone a live picture of where the others are — without anyone having to
-stop and ask.
-
-### The five-minute meeting that isn't
-
-<img width="800" height="705" alt="image" src="https://github.com/user-attachments/assets/4d26bd7a-177b-4650-8c99-bc2ef551d6bb" />
-
-
-> **What people assume:** "Quick question, five minutes."
-> **What actually happens:** the interrupted developer loses their place and needs
-> 15–25 minutes to climb back into deep focus. That five-minute ask quietly costs
-> half an hour — for *two* people.
-
-Multiply that by every teammate, every day, and coordination overhead — not
-engineering skill — becomes the real ceiling on how fast a team ships.
-
-PodMan removes the reason to interrupt. Because it already knows who is touching
-which file, what's still unpushed, and what each person is in the middle of, any
-teammate can see another's status instantly — no tap on the shoulder, no standup,
-no recovery tax. And it gets better as it goes: every accept or dismiss teaches
-it what your team actually cares about, so it nudges less and helps more over
-time.
-
-> GitHub sees pushed work. PodMan sees work while it is still happening — and
-> remembers what helped.
+| Need                    | Use this                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| Open the product        | `https://podman.live`                                                                         |
+| Check the app           | `curl https://podman.live/health`                                                             |
+| Check pods and memory   | `curl https://podman.live/api/pods && curl https://podman.live/api/memory/stats`              |
+| Use the LLM externally  | Base URL `https://llm.alhinai.dev/v1`, model `gemma-4-31B-it`                                 |
+| Test Hermes             | `hermes -z 'Reply with exactly: working' --provider gemma4-31b-vllm --model gemma-4-31B-it`   |
+| Start local development | API, vision agent, and frontend commands are in [Local Development](#local-development)       |
+| Debug production        | Public checks first, then systemd services in [Production Operations](#production-operations) |
 
 ---
 
+## Current Live System
 
+| Surface       | Running now                  | Purpose                                |
+| ------------- | ---------------------------- | -------------------------------------- |
+| Product       | `https://podman.live`        | Team room, screen context, cards       |
+| API           | `https://podman.live/api/*`  | Pods, tokens, outcomes, memory         |
+| Health        | `https://podman.live/health` | Backend readiness                      |
+| Local API     | `127.0.0.1:8787`             | Express service behind Caddy           |
+| Reasoning LLM | `https://llm.alhinai.dev/v1` | OpenAI-compatible Gemma/vLLM endpoint  |
+| API key       | `not-needed`                 | Placeholder key for OpenAI clients     |
+| Hermes model  | `gemma-4-31B-it`             | 262K-context tool-using agent          |
+| Hermes config | `gemma4-31b-vllm`            | Custom provider used by Hermes locally |
 
-## How it learns
+```mermaid
+flowchart TB
+  Browser["Engineer Browser<br/>React + Vite PWA"]
+  Room["LiveKit Room<br/>screen share + audio + data messages"]
 
-The learning loop is the product, not a side feature. It runs with almost no
-extra work from anyone — the only human signal is a single accept/dismiss tap on
-a card.
+  subgraph Droplet["DigitalOcean PodMan Droplet"]
+    Caddy["Caddy<br/>static app + /api proxy"]
+    API["Express API<br/>127.0.0.1:8787"]
+    Vision["Vision Agent<br/>screen frame observer"]
+    Voice["Live Conversation Agent<br/>Python + Gemini Live"]
+    Ops["Hermes Ops Timers<br/>watchdog + sync deploy"]
+  end
 
+  subgraph Memory["MongoDB Atlas"]
+    Observations["observations"]
+    State["engineer_states"]
+    Outcomes["interventions + outcomes"]
+  end
+
+  subgraph Google["Google Gemini APIs"]
+    GeminiVision["Vision"]
+    GeminiVoice["Live voice + TTS"]
+    GeminiEmbed["Embeddings fallback"]
+    Lyria["Music"]
+  end
+
+  subgraph Reasoning["External Reasoning Endpoint"]
+    Tunnel["Cloudflare Tunnel<br/>llm.alhinai.dev"]
+    VLLM["vLLM OpenAI Server<br/>gemma-4-31B-it<br/>262144 context"]
+    Hermes["Hermes Agent<br/>provider: gemma4-31b-vllm"]
+  end
+
+  Browser --> Caddy --> API
+  Browser <-->|screen, audio, cards| Room
+  API --> Room
+  API --> Observations
+  API --> State
+  API --> Outcomes
+  Vision <-->|screen tracks| Room
+  Vision --> GeminiVision
+  Vision --> Observations
+  Vision --> Outcomes
+  Voice <-->|conversation| Room
+  Voice --> GeminiVoice
+  Vision --> GeminiEmbed
+  Voice --> GeminiEmbed
+  Ops --> Hermes --> Tunnel --> VLLM
+  API --> Hermes
+  Lyria --> Voice
+
+  classDef user fill:#e8f1ff,stroke:#3366cc,color:#0b1f44;
+  classDef app fill:#eef8ee,stroke:#2f8a3a,color:#123915;
+  classDef data fill:#fff6df,stroke:#c47f00,color:#3d2b00;
+  classDef ai fill:#f4edff,stroke:#805ad5,color:#2d1857;
+  class Browser,Room user;
+  class Caddy,API,Vision,Voice,Ops app;
+  class Observations,State,Outcomes data;
+  class GeminiVision,GeminiVoice,GeminiEmbed,Lyria,Tunnel,VLLM,Hermes ai;
 ```
-observe → detect → RECALL prior outcomes → policy gate → act → record outcome
-  └──────────────────────────── feeds next recall ───────────────────────────┘
+
+## What It Does
+
+```mermaid
+flowchart LR
+  A["Engineer shares screen"] --> B["Gemini extracts work context"]
+  B --> C["PodMan detects overlap<br/>files, symbols, research, unpushed work"]
+  C --> D["MongoDB recalls<br/>similar prior events"]
+  D --> E{"Policy gate"}
+  E -->|"seen false alarm"| F["stay quiet"]
+  E -->|"seen real collision"| G["raise urgency"]
+  E -->|"new useful signal"| H["show card or message"]
+  G --> I["Hermes / voice escalation"]
+  H --> J["teammate accepts or dismisses"]
+  I --> J
+  J --> K["outcome becomes future memory"]
+  K --> D
 ```
 
+PodMan removes the reason to interrupt. It gives the team a live picture of work
+in progress, then improves from every accepted or dismissed intervention.
 
-| Stage                     | What happens                                                                                                            | Code                                |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **Observe**               | Gemini Vision turns each screen frame into structured work context (file, symbol, activity, unpushed hints)             | `backend/src/vision/gemini.ts`      |
-| **Detect**                | Same file touched by 2+ engineers with unpushed work → a coordination event                                             | `backend/src/collision/detector.ts` |
-| **Recall (memory)**       | Embed the event, query MongoDB Atlas `$vectorSearch` for similar past events, attach their prior intervention + outcome | `backend/src/memory/vectors.ts`     |
-| **Policy gate (adapt)**   | A dismissed false alarm stays silent; a confirmed real catch escalates to critical; a per-pod cooldown prevents nagging | `backend/src/memory/policy.ts`      |
-| **Act (least intrusive)** | Reuse the action kind that was accepted before; default to a card, escalate to a Hermes message, voice only when urgent | `backend/src/action/hermes.ts`      |
-| **Record (feedback)**     | Accept/dismiss + "was it real?" is written back to memory, closing the loop for next time                               | `backend/src/memory/store.ts`       |
-
-
-A few things make this real learning rather than a static prompt:
-
-- It adapts from real teammate behavior during a real session, not an offline
-dataset.
-- It gets more useful as the `outcomes` collection grows — better recall, fewer
-false alarms.
-- It needs one tap. No labeling, no config, no retraining.
-- The mechanism is memory: Atlas vector recall plus an outcome-conditioned
-policy, with an exact-signature fallback when vector search isn't available.
-
-In practice: a false alarm gets dismissed once, and the same pattern stays quiet
-next time. A real conflict gets accepted once, and when it recurs PodMan recalls
-it and escalates straight to a spoken "seen before" cue.
+> GitHub sees pushed work. PodMan sees work while it is still happening.
 
 ---
 
+## The Model Stack
 
-
-## Architecture
-
-A browser PWA, an HTTP API service, LiveKit agent workers, and a
-memory/action layer. The screen signal flows through LiveKit, never a manual
-screenshot upload.
-
-### Infrastructure: LiveKit · Hermes · MongoDB · DigitalOcean
-
-How the real-time, action, memory, and hosting layers wire together. Everything
-under the droplet boundary is one systemd-supervised DigitalOcean box; LiveKit
-and Mongo Atlas are managed clouds it talks to.
+PodMan uses multiple AI surfaces. They are intentionally split by job.
 
 ```mermaid
 flowchart LR
-  Dev["Engineer browser<br/>React PWA + screen share"]
+  Work["Screen + room activity"] --> VisionRoute["Perception route"]
+  VoiceInput["Engineer speech"] --> ConversationRoute["Conversation route"]
+  OpsNeed["Ops / autonomous task"] --> HermesRoute["Reasoning route"]
+  MemoryNeed["Similarity search"] --> EmbedRoute["Memory route"]
+  Ambient["Session atmosphere"] --> MusicRoute["Audio route"]
 
-  subgraph DO["DigitalOcean droplet — systemd-supervised"]
-    WebApi["Caddy + API service<br/>static app · /api · LiveKit tokens"]
-    Agent["Vision agent worker<br/>Gemini reads each screen frame"]
-    Coord["Hermes coordinator<br/>detects clashes · intervenes"]
-    PyAgent["Live conversation agent<br/>(Python)"]
-  end
+  VisionRoute --> Gemini20["gemini-2.0-flash<br/>screen understanding"]
+  ConversationRoute --> GeminiLive["gemini-3.1-flash-live-preview<br/>live Q&A"]
+  ConversationRoute --> GeminiTTS["gemini-3.1-flash-tts-preview<br/>urgent speech"]
+  HermesRoute --> Gemma["gemma-4-31B-it<br/>Hermes + vLLM + tools"]
+  EmbedRoute --> Voyage["voyage-4-lite<br/>primary embeddings"]
+  EmbedRoute --> GeminiEmbed["gemini-embedding-001<br/>fallback embeddings"]
+  MusicRoute --> Lyria["lyria-3-clip-preview<br/>background music"]
 
-  LK["LiveKit room<br/>managed cloud"]
-  Mongo[("MongoDB Atlas<br/>team memory")]
-
-  Dev -->|"open app · get token"| WebApi
-  Dev <-->|"screens & voice out · cards & alerts in"| LK
-  LK -->|"pre-commit work signal"| Agent --> Coord
-  Coord -->|"nudge before duplicate work / clash"| LK
-  PyAgent <-->|"answer questions by voice"| LK
-  Coord -->|"learn from every outcome"| Mongo
-  PyAgent -->|"recall team context"| Mongo
-  WebApi <-->|"pods + outcomes"| Mongo
+  classDef signal fill:#e8f1ff,stroke:#3366cc,color:#0b1f44;
+  classDef route fill:#eef8ee,stroke:#2f8a3a,color:#123915;
+  classDef model fill:#f4edff,stroke:#805ad5,color:#2d1857;
+  class Work,VoiceInput,OpsNeed,MemoryNeed,Ambient signal;
+  class VisionRoute,ConversationRoute,HermesRoute,EmbedRoute,MusicRoute route;
+  class Gemini20,GeminiLive,GeminiTTS,Gemma,Voyage,GeminiEmbed,Lyria model;
 ```
 
-> Mongo connectivity is **required at boot** — the API and both agents ping Atlas
-> on startup and exit loudly rather than degrade silently.
+### Gemma 4 31B via vLLM
 
-### Gemini: roles, models, and triggers
+Hermes uses the external OpenAI-compatible endpoint:
 
-Five distinct Gemini surfaces, each fired by a specific event in the pod and
-mapped to the file that calls it.
-
-```mermaid
-flowchart LR
-  subgraph Triggers["Trigger (event in the pod)"]
-    Frame["Sampled IDE frame<br/>from LiveKit screen track"]
-    NewEvent["New observation<br/>or collision"]
-    Talk["Engineer speaks<br/>in the room"]
-    Urgent["Hermes raises an<br/>urgent intervention"]
-    Session["Pod session<br/>active"]
-  end
-
-  subgraph G["Gemini surface · model · code"]
-    Vision["Vision<br/>gemini-2.0-flash<br/>backend/src/vision/gemini.ts"]
-    Embed["Embeddings<br/>gemini-embedding-001<br/>backend/src/memory/vectors.ts"]
-    Live["Live voice agent<br/>gemini-3.1-flash-live-preview<br/>agents/podman-live-conversation/agent.py"]
-    TTS["Urgent TTS<br/>gemini-3.1-flash-tts-preview<br/>backend/src/voice/live.ts"]
-    Lyria["Background music<br/>lyria-3-clip-preview<br/>backend/src/voice/music.ts"]
-  end
-
-  subgraph Out["Output"]
-    Ctx["Structured work context<br/>{file, symbol, activity, mode, research}"]
-    Recall["$vectorSearch recall<br/>prior intervention + outcome"]
-    Answer["Spoken answer over<br/>repo / git / memory tools"]
-    Voice["Spoken alert<br/>in the room"]
-    Score["Per-pod ambient<br/>score"]
-  end
-
-  Frame --> Vision --> Ctx
-  NewEvent --> Embed --> Recall
-  Talk --> Live --> Answer
-  Urgent --> TTS --> Voice
-  Session --> Lyria --> Score
+```text
+Base URL: https://llm.alhinai.dev/v1
+API key: not-needed
+Model: gemma-4-31B-it
+Context: 262144 tokens
 ```
 
+The vLLM server is configured for Hermes-style tool use:
 
+```text
+--max-model-len 262144
+--max-num-seqs 1
+--max-num-batched-tokens 16384
+--gpu-memory-utilization 0.85
+--kv-cache-dtype fp8
+--enable-auto-tool-choice
+--tool-call-parser gemma4
+--enable-chunked-prefill
+```
 
+Hermes should point at that endpoint with this provider shape:
 
+```yaml
+model:
+  default: gemma-4-31B-it
+  provider: gemma4-31b-vllm
 
-### Runtime shape
+providers:
+  gemma4-31b-vllm:
+    name: Gemma 4 31B vLLM (256K)
+    api: https://llm.alhinai.dev/v1
+    api_key: not-needed
+    transport: chat_completions
+    default_model: gemma-4-31B-it
+    discover_models: true
+    models:
+      gemma-4-31B-it:
+        context_length: 262144
 
+agent:
+  tool_use_enforcement: auto
+```
 
-| Layer                   | Runtime                                   | Responsibility                                                                          |
-| ----------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| Frontend PWA            | React + Vite                              | Join pods, publish screen share, render interventions, play audio                       |
-| Backend API             | Express                                   | Mint LiveKit tokens, manage pods, record outcomes, expose memory stats, create sync PRs |
-| Vision agent            | `@livekit/rtc-node`                       | Subscribe to screen-share tracks, sample frames, publish intervention data              |
-| Live conversation agent | LiveKit Agents (Python) + Gemini Live API | Real-time voice Q&A with function tools over repo, git, and memory                      |
-| Perception              | Gemini Vision (`gemini-2.0-flash`)        | Sampled IDE frames → structured work context                                            |
-| Team memory             | MongoDB Atlas                             | Observations, collisions, interventions, outcomes, vector embeddings                    |
-| Git watcher             | Node script                               | Report each laptop's dirty/unpushed state as ground truth                               |
-| Action layer            | Hermes                                    | Cards, teammate messages, Gemini TTS urgent voice, Lyria background score               |
-| Deployment              | DigitalOcean                              | Static frontend, API service, agent workers                                             |
+Why this matters: Hermes sends OpenAI tool schemas and `tool_choice: "auto"`.
+Without `--enable-auto-tool-choice` and `--tool-call-parser gemma4`, vLLM returns
+HTTP 400 before Hermes can initialize an agent.
 
+### Gemini Surfaces
 
+Gemini remains the realtime perception and voice layer inside PodMan.
 
+| Use                        | Model                           | Code                                       |
+| -------------------------- | ------------------------------- | ------------------------------------------ |
+| Screen understanding       | `gemini-2.0-flash`              | `backend/src/vision/gemini.ts`             |
+| Urgent spoken alerts       | `gemini-3.1-flash-tts-preview`  | `backend/src/voice/live.ts`                |
+| Live room conversation     | `gemini-3.1-flash-live-preview` | `agents/podman-live-conversation/agent.py` |
+| Memory embeddings fallback | `gemini-embedding-001`          | `backend/src/memory/vectors.ts`            |
+| Ambient background music   | `lyria-3-clip-preview`          | `backend/src/voice/music.ts`               |
 
-### Data flow
+Voyage embeddings can be used first when `VOYAGE_API_KEY` is set. Gemini
+embeddings remain the fallback. If no embedding provider is available, PodMan
+falls back to exact-signature matching.
+
+---
+
+## How The Learning Loop Works
+
+The learning loop is the product. A teammate only has to accept or dismiss an
+intervention; the rest is captured automatically.
+
+```text
+observe -> detect -> recall prior outcomes -> policy gate -> act -> record outcome
+   ^                                                                    |
+   +-------------------------- next recall -----------------------------+
+```
+
+| Stage   | What happens                                                                | Code                                |
+| ------- | --------------------------------------------------------------------------- | ----------------------------------- |
+| Observe | Gemini Vision turns sampled screen frames into structured work context.     | `backend/src/vision/gemini.ts`      |
+| Detect  | PodMan detects overlapping files, symbols, research, and unpushed work.     | `backend/src/collision/detector.ts` |
+| Recall  | MongoDB Atlas recalls similar prior events and outcomes.                    | `backend/src/memory/vectors.ts`     |
+| Gate    | Policy suppresses dismissed false alarms and escalates recurring real ones. | `backend/src/memory/policy.ts`      |
+| Act     | PodMan publishes a card, Hermes message, or urgent voice cue.               | `backend/src/action/hermes.ts`      |
+| Learn   | Accept/dismiss feedback is written back to memory.                          | `backend/src/memory/store.ts`       |
+
+---
+
+## Runtime Components
+
+| Layer              | Runtime                             | Responsibility                                                       |
+| ------------------ | ----------------------------------- | -------------------------------------------------------------------- |
+| Frontend           | React + Vite                        | Pod rooms, screen share, cards, voice controls, member state         |
+| Backend API        | Express on `:8787`                  | LiveKit tokens, pod CRUD, outcomes, memory stats, sync PRs           |
+| Vision agent       | Node + `@livekit/rtc-node`          | Subscribes to screen tracks, samples frames, publishes interventions |
+| Live voice agent   | Python LiveKit Agents + Gemini Live | Real-time voice Q&A in a pod room                                    |
+| Memory             | MongoDB Atlas                       | Observations, engineer state, collisions, interventions, outcomes    |
+| Reasoning agent    | Hermes + Gemma vLLM                 | Tool-using autonomous assistant and ops layer                        |
+| Realtime transport | LiveKit Cloud                       | Screen tracks, audio tracks, data messages                           |
+| Hosting            | DigitalOcean + Caddy + systemd      | Static frontend, API, workers, watchdog timers                       |
+
+---
+
+## Data Flow
 
 ```mermaid
 sequenceDiagram
@@ -197,161 +265,106 @@ sequenceDiagram
   participant Dev as Engineer PWA
   participant API as Backend API
   participant LK as LiveKit Room
-  participant Agent as PodMan Agent
-  participant Gemini as Gemini Vision
-  participant Mongo as MongoDB Memory
-  participant Hermes as Hermes / Action Layer
+  participant Agent as Vision Agent
+  participant Gemini as Gemini APIs
+  participant Mongo as MongoDB Atlas
+  participant Hermes as Hermes/Gemma
 
   Dev->>API: POST /api/token
   API-->>Dev: LiveKit URL + JWT
   Dev->>LK: Join pod room + publish screen share
   Agent->>LK: Subscribe to screen-share video
-  Agent->>Gemini: Sampled JPEG frame
+  Agent->>Gemini: Sampled frame
   Gemini-->>Agent: Structured work context
-  Agent->>Mongo: Record observation
-  Agent->>Mongo: Recall prior patterns (vector search)
-  Mongo-->>Agent: Prior intervention + outcome
-  Agent->>Hermes: Create intervention (gated by policy)
-  Hermes->>LK: Publish card / message / Gemini TTS voice
-  LK-->>Dev: Render intervention
-  Dev->>API: POST /api/outcome (accept / dismiss)
-  API->>Mongo: Store learning signal
+  Agent->>Mongo: Store observation
+  Agent->>Mongo: Recall similar prior events
+  Mongo-->>Agent: Prior outcome + policy hints
+  Agent->>Hermes: Escalate when autonomous help is useful
+  Agent->>LK: Publish card / message / voice cue
+  Dev->>API: POST /api/outcome
+  API->>Mongo: Store accept/dismiss feedback
 ```
 
+---
 
+## Public Interfaces
+
+| Interface                                                   | Purpose                                        |
+| ----------------------------------------------------------- | ---------------------------------------------- |
+| `GET /health`                                               | API health check                               |
+| `POST /api/token`                                           | Mint LiveKit room tokens                       |
+| `GET /api/pods`                                             | List pods                                      |
+| `GET/POST/PATCH/DELETE /api/pods`                           | Pod CRUD                                       |
+| `POST/DELETE /api/pods/:id/members`                         | Pod membership                                 |
+| `GET /api/pods/:id/members/:name/history`                   | Recent member work history                     |
+| `POST /api/outcome`                                         | Store accepted/dismissed intervention outcomes |
+| `GET /api/memory/stats`                                     | Live memory collection counts                  |
+| `POST /api/sync-pr`                                         | Create a visible sync PR artifact              |
+| LiveKit topic `podman.intervention`                         | Intervention data channel                      |
+| Wire messages `COLLISION`, `ACK`, `GIT_REPORT`, `VOICE_CUE` | Agent/PWA contract                             |
 
 ---
 
+## Monorepo Layout
 
-
-## Built with
-
-Everything below maps to code in this repo.
-
-**Gemini** does the perception, the voice, and the memory:
-
-
-| Use                                                                         | Model                           | Where                                      |
-| --------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------ |
-| Real-time voice agent (talk to PodMan, answered with repo/git/memory tools) | `gemini-3.1-flash-live-preview` | `agents/podman-live-conversation/agent.py` |
-| Spoken urgent alerts over LiveKit                                           | `gemini-3.1-flash-tts-preview`  | `backend/src/voice/live.ts`                |
-| Screen understanding → structured work context                              | `gemini-2.0-flash`              | `backend/src/vision/gemini.ts`             |
-| Per-pod background music (Interactions API)                                 | `lyria-3-clip-preview`          | `backend/src/voice/music.ts`               |
-| Embeddings for memory recall                                                | `gemini-embedding-001`          | `backend/src/memory/vectors.ts`            |
-
-
-**LiveKit** is the real-time layer: screen-share tracks are the input, a typed
-data channel (`podman.intervention`) carries cards and messages, audio tracks
-carry the spoken alerts and music, and a Python LiveKit Agents worker runs the
-live conversation agent in the room.
-
-**MongoDB Atlas** is the memory: `$vectorSearch` recalls similar past events
-(exact-signature fallback when needed), and the `outcomes` collection drives the
-policy that decides whether and how to act.
-
-**DigitalOcean** hosts it: a static frontend, the API service, and the agent
-workers, supervised by systemd. Mongo connectivity is required at boot — services
-fail loudly rather than degrade silently.
+| Folder      | Purpose                                                                 |
+| ----------- | ----------------------------------------------------------------------- |
+| `frontend/` | React + Vite PWA                                                        |
+| `backend/`  | Express API, vision agent, memory, collision detection, Hermes job APIs |
+| `agents/`   | Python LiveKit conversation agent                                       |
+| `shared/`   | Shared TypeScript contracts                                             |
+| `database/` | MongoDB setup and seed utilities                                        |
+| `infra/`    | Caddy, Docker, DigitalOcean, systemd units                              |
+| `scripts/`  | Git watcher, deploy doctor, watchdog, verification tooling              |
+| `docs/`     | Demo, deployment, learning, graph, and architecture notes               |
 
 ---
 
+## Local Development
 
+Run the core app in three terminals:
 
-## How it works
+```mermaid
+flowchart LR
+  Env["1. Configure .env"] --> Install["2. pnpm install"]
+  Install --> API["Terminal A<br/>backend API :8787"]
+  Install --> Agent["Terminal B<br/>vision agent"]
+  Install --> UI["Terminal C<br/>frontend :5173"]
+  Install --> Voice["Optional<br/>conversation agent"]
+  API --> Browser["Open local PWA"]
+  Agent --> Browser
+  UI --> Browser
+  Voice --> Browser
 
-1. Engineers open the PWA and join a pod room.
-2. The API mints a LiveKit token via `POST /api/token`.
-3. The PWA publishes screen share into the room on "Share my screen".
-4. The PodMan vision agent subscribes to the screen-share tracks.
-5. The agent samples frames, sends them to Gemini Vision, records structured
-  observations in MongoDB.
-6. Each engineer runs the git watcher so PodMan has deterministic
-  dirty/unpushed truth.
-7. The detector fuses live screen context, git truth, GitHub state, and recalled
-  memory.
-8. The policy gate decides whether and how to act — card, Hermes message, or
-  urgent voice — reusing what worked before.
-9. Urgent escalations are spoken via Gemini TTS over a LiveKit audio track.
-10. The teammate's accept/dismiss is saved as an outcome, closing the
-  continual-learning loop.
-
-Separately, any teammate can start a **live voice conversation** with PodMan
-(Gemini Live API) to ask about current work, git state, or where something lives
-in the repo — answered with real tool calls, not guesses.
-
----
-
-
-
-## Public interfaces
-
-
-| Interface                                                   | Purpose                                           |
-| ----------------------------------------------------------- | ------------------------------------------------- |
-| `GET /health`                                               | API health check                                  |
-| `POST /api/token`                                           | Mint LiveKit room tokens                          |
-| `POST /api/sync-pr`                                         | Create a visible sync PR artifact                 |
-| `POST /api/outcome`                                         | Store accepted/dismissed intervention outcomes    |
-| `GET /api/memory/stats`                                     | Memory collection counts (live learning evidence) |
-| `GET/POST/PATCH/DELETE /api/pods`                           | Pod CRUD                                          |
-| `POST/DELETE /api/pods/:id/members`                         | Pod membership                                    |
-| LiveKit topic `podman.intervention`                         | Intervention data channel                         |
-| Wire messages `COLLISION`, `ACK`, `GIT_REPORT`, `VOICE_CUE` | Agent/PWA contract                                |
-
-
----
-
-
-
-## Monorepo layout
-
-
-| Folder      | What                                                                       |
-| ----------- | -------------------------------------------------------------------------- |
-| `frontend/` | React + Vite PWA — pods, LiveKit room UI, screen share, intervention cards |
-| `backend/`  | Express API plus the LiveKit vision agent worker                           |
-| `agents/`   | Python LiveKit Agents worker for the Gemini Live conversation agent        |
-| `shared/`   | Shared TypeScript types and LiveKit data message contracts                 |
-| `database/` | MongoDB setup and seed utilities                                           |
-| `infra/`    | DigitalOcean specs, Caddyfile, systemd units                               |
-| `scripts/`  | Local git watcher + deploy/verify tooling                                  |
-| `docs/`     | Integration specs and the demo script                                      |
-
-
----
-
-
-
-## Quick start
+  classDef step fill:#eef8ee,stroke:#2f8a3a,color:#123915;
+  classDef run fill:#e8f1ff,stroke:#3366cc,color:#0b1f44;
+  class Env,Install step;
+  class API,Agent,UI,Voice,Browser run;
+```
 
 ```bash
 cp .env.example .env
-# fill in LIVEKIT_*, GEMINI_*, GITHUB_*, MONGODB_URI
+# Fill LIVEKIT_*, GEMINI_*, GITHUB_*, MONGODB_URI.
 
 pnpm install
 pnpm --filter @podman/backend dev       # API on :8787
-pnpm --filter @podman/backend dev:agent # PodMan LiveKit vision agent
+pnpm --filter @podman/backend dev:agent # LiveKit vision agent
 pnpm --filter @podman/frontend dev      # PWA on :5173
 ```
 
-The live conversation agent (Gemini Live API) runs from `agents/podman-live-conversation/`.
-
----
-
-
-
-## Git watcher — run on every demo laptop
-
-Each engineer runs this before the demo. It polls the local git working tree
-every 15 seconds and writes git state to MongoDB so PodMan has deterministic
-dirty/unpushed truth that vision alone cannot reliably infer.
+Run the Python live conversation agent:
 
 ```bash
-# from the repo root
-node scripts/podman-agent.mjs --name <yourname> --pod <podId>
+pnpm livekit:conversation:agent
 ```
 
-**Demo setup:**
+Run the local git watcher on each demo laptop:
+
+```bash
+node scripts/podman-agent.mjs --name <engineer-name> --pod <pod-id>
+```
+
+Demo identities:
 
 ```bash
 node scripts/podman-agent.mjs --name alice --pod demo-pod
@@ -359,5 +372,184 @@ node scripts/podman-agent.mjs --name bob   --pod demo-pod
 node scripts/podman-agent.mjs --name carol --pod demo-pod
 ```
 
-**Requirements:** `MONGODB_URI` exported (or in `backend/.env`), `pnpm install`
-run first, launched from the repo root.
+---
+
+## Production Operations
+
+The production droplet is systemd-supervised. Caddy serves the built frontend
+and proxies `/api/*` to the backend on `127.0.0.1:8787`.
+
+```mermaid
+flowchart LR
+  Public["https://podman.live"] --> Caddy["caddy.service"]
+  Caddy --> Static["/var/www/podman"]
+  Caddy --> API["podman-platform-api.service<br/>:8787"]
+  API --> Agent["podman-platform-agent.service"]
+  API --> Voice["podman-live-conversation-agent.service"]
+  Watchdog["podman-hermes-watchdog.timer"] --> Public
+  Sync["podman-hermes-sync-deploy.timer"] --> API
+
+  classDef public fill:#e8f1ff,stroke:#3366cc,color:#0b1f44;
+  classDef service fill:#eef8ee,stroke:#2f8a3a,color:#123915;
+  classDef timer fill:#fff6df,stroke:#c47f00,color:#3d2b00;
+  class Public public;
+  class Caddy,Static,API,Agent,Voice service;
+  class Watchdog,Sync timer;
+```
+
+| Service / timer                          | Purpose                                                        |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| `podman-platform-api.service`            | Built backend API on port `8787`                               |
+| `podman-platform-agent.service`          | Node LiveKit vision agent                                      |
+| `podman-live-conversation-agent.service` | Python Gemini Live conversation agent                          |
+| `podman-hermes-watchdog.timer`           | Periodic public health and remediation                         |
+| `podman-hermes-sync-deploy.timer`        | Clean-tree fast-forward deploy loop                            |
+| `caddy.service`                          | Serves `/var/www/podman`, proxies `/api/*` to `127.0.0.1:8787` |
+
+Check the app from the outside first:
+
+```bash
+curl https://podman.live/
+curl https://podman.live/health
+curl https://podman.live/api/pods
+curl https://podman.live/api/presence
+curl https://podman.live/api/memory/stats
+```
+
+Then check the droplet services:
+
+```bash
+systemctl is-active podman-platform-api podman-platform-agent
+systemctl is-active podman-live-conversation-agent
+systemctl is-active podman-hermes-watchdog.timer podman-hermes-sync-deploy.timer
+```
+
+Hermes operations scripts:
+
+```bash
+pnpm hermes:watchdog
+pnpm hermes:watchdog:strict
+pnpm hermes:sync-deploy
+pnpm deploy:doctor:strict
+```
+
+Gemma/vLLM endpoint checks:
+
+```bash
+curl https://llm.alhinai.dev/v1/models \
+  -H "Authorization: Bearer not-needed"
+
+curl https://llm.alhinai.dev/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer not-needed" \
+  -d '{
+    "model": "gemma-4-31B-it",
+    "messages": [{"role": "user", "content": "Reply with exactly: working"}],
+    "temperature": 0,
+    "max_tokens": 512
+  }'
+```
+
+---
+
+## Required Environment
+
+```bash
+LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=...
+LIVEKIT_API_SECRET=...
+LIVEKIT_CONVERSATION_AGENT_NAME=podman-live-conversation
+
+GEMINI_API_KEY=...
+GEMINI_VISION_MODEL=gemini-2.0-flash
+GEMINI_LIVE_MODEL=gemini-3.1-flash-tts-preview
+GEMINI_CONVERSATION_MODEL=gemini-3.1-flash-live-preview
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+GEMINI_TTS_VOICE=Charon
+
+GITHUB_TOKEN=...
+GITHUB_REPO=karti-ai/podman
+
+MONGODB_URI=mongodb+srv://...
+VOYAGE_API_KEY=...
+VOYAGE_EMBEDDING_MODEL=voyage-4-lite
+
+PORT=8787
+POD_ROOM=demo-pod
+```
+
+Gemma/Hermes provider values live in Hermes config, not PodMan `.env`:
+
+```text
+provider: gemma4-31b-vllm
+model: gemma-4-31B-it
+base_url: https://llm.alhinai.dev/v1
+api_key: not-needed
+```
+
+---
+
+## Verification
+
+Before calling a deployment healthy:
+
+```bash
+pnpm verify
+pnpm verify:infra
+pnpm deploy:doctor:strict
+pnpm hermes:watchdog:strict
+```
+
+For the public site:
+
+```bash
+curl https://podman.live/
+curl https://podman.live/health
+curl https://podman.live/api/pods
+curl https://podman.live/api/presence
+curl https://podman.live/api/memory/stats
+```
+
+For Hermes/Gemma:
+
+```bash
+hermes -z 'Reply with exactly: working' \
+  --provider gemma4-31b-vllm \
+  --model gemma-4-31B-it
+```
+
+Expected output:
+
+```text
+working
+```
+
+---
+
+## Troubleshooting
+
+| Symptom                                  | Likely cause                                   | Check                                                        |
+| ---------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| Frontend loads but API fails             | Backend or Caddy proxy issue                   | `systemctl status podman-platform-api caddy`                 |
+| `/api/*` returns 502                     | API not listening on `8787`                    | `ss -ltnp`, `curl http://127.0.0.1:8787/health`              |
+| No screen observations                   | Vision agent not in LiveKit room               | `journalctl -u podman-platform-agent -n 80`                  |
+| Live voice missing                       | Python conversation agent down                 | `journalctl -u podman-live-conversation-agent -n 80`         |
+| Memory empty                             | MongoDB unavailable or env missing             | `curl /api/memory/stats`, backend logs                       |
+| Hermes says tool auto-choice is disabled | vLLM missing tool flags                        | verify `--enable-auto-tool-choice --tool-call-parser gemma4` |
+| `llm.alhinai.dev` returns 502            | Gemma vLLM still loading or tunnel target down | `curl /v1/models`, vLLM logs on Gemma host                   |
+
+---
+
+## Why It Gets Better
+
+PodMan is not a static alert system. It remembers what actually helped.
+
+- A dismissed false alarm lowers future urgency.
+- An accepted real collision raises future urgency for similar work.
+- Exact-signature recall catches repeats even without vector search.
+- MongoDB outcomes become the policy signal for the next session.
+- Hermes and Gemma give the system a tool-using agent when the coordination
+  problem needs active investigation instead of a passive card.
+
+The goal is simple: fewer interruptions, fewer duplicate branches, and a team
+that can move fast without constantly asking what everyone else is doing.

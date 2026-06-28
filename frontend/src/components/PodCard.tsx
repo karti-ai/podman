@@ -7,7 +7,13 @@ import {
   VideoIcon,
 } from 'lucide-react';
 import type { Pod, PodInput } from '@podman/shared';
-import { Avatar, AvatarBadge, AvatarFallback, AvatarGroup } from '@/components/ui/avatar';
+import {
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarImage,
+} from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,6 +47,7 @@ export function PodCard({
   pod,
   busy,
   presence,
+  currentUserProfile,
   onJoin: _onJoin,
   onAddAndJoin,
   onAddMember: _onAddMember,
@@ -52,15 +59,19 @@ export function PodCard({
   pod: Pod;
   busy: boolean;
   presence: string[];
+  currentUserProfile?: {
+    displayName: string;
+    email?: string;
+    imageUrl?: string;
+  };
   onJoin: (pod: Pod, member: string) => void;
-  onAddAndJoin: (pod: Pod, name: string) => void;
+  onAddAndJoin: (pod: Pod) => void;
   onAddMember: (id: string, name: string) => void;
   onRemoveMember: (id: string, name: string) => void;
   onUpdate: (id: string, patch: PodInput) => void;
   onDelete: (id: string) => void;
   onOpenGraph: (id: string) => void;
 }) {
-  const [newMember, setNewMember] = useState('');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<PodInput>({
     name: pod.name,
@@ -69,6 +80,13 @@ export function PodCard({
   });
 
   const inRoom = (name: string) => presence.some((p) => p.toLowerCase() === name.toLowerCase());
+  const profileForMember = (name: string) =>
+    pod.memberProfiles?.[name] ??
+    ([currentUserProfile?.displayName, currentUserProfile?.email]
+      .filter(Boolean)
+      .some((value) => value?.toLowerCase() === name.toLowerCase())
+      ? currentUserProfile
+      : undefined);
   const active = presence.length > 0;
 
   function saveEdit() {
@@ -80,13 +98,8 @@ export function PodCard({
     setEditing(false);
   }
 
-  // One action: enter your name, hit Join → added to the roster (deduped
-  // server-side) and connected to the room in a single step.
   function join() {
-    const name = newMember.trim();
-    if (!name) return;
-    onAddAndJoin(pod, name);
-    setNewMember('');
+    onAddAndJoin(pod);
   }
 
   return (
@@ -143,12 +156,16 @@ export function PodCard({
 
             <div className="flex items-center justify-between gap-4">
               <AvatarGroup>
-                {pod.members.slice(0, 4).map((member) => (
-                  <Avatar key={member} title={member}>
-                    <AvatarFallback>{initials(member)}</AvatarFallback>
-                    {inRoom(member) && <AvatarBadge />}
-                  </Avatar>
-                ))}
+                {pod.members.slice(0, 4).map((member) => {
+                  const profile = profileForMember(member);
+                  return (
+                    <Avatar key={member} title={profile?.email ?? member}>
+                      {profile?.imageUrl && <AvatarImage src={profile.imageUrl} alt={member} />}
+                      <AvatarFallback>{initials(member)}</AvatarFallback>
+                      {inRoom(member) && <AvatarBadge />}
+                    </Avatar>
+                  );
+                })}
                 {pod.members.length > 4 && <span className="text-sm text-muted-foreground">+</span>}
               </AvatarGroup>
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -157,16 +174,8 @@ export function PodCard({
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Input
-                placeholder="Your name"
-                value={newMember}
-                onChange={(e) => setNewMember(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') join();
-                }}
-              />
-              <Button className="min-w-24" onClick={join} disabled={busy || !newMember.trim()}>
+            <div className="flex justify-end">
+              <Button className="min-w-24" onClick={join} disabled={busy}>
                 <VideoIcon data-icon="inline-start" />
                 Join
               </Button>

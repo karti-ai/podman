@@ -12,7 +12,9 @@ import {
   recordOutcome,
   hasRecentInterventionForCollision,
   memoryStats,
+  recordUserPodContext,
 } from './memory/store.js';
+import { clerkAuthMiddleware, requestUser } from './auth.js';
 import { closeMemory, initMemory } from './memory/db.js';
 import {
   listPods,
@@ -41,6 +43,10 @@ import {
   recordLiveConversationNote,
 } from './live-conversation/context.js';
 import {
+  listUserLearningProfiles,
+  refreshUserLearningProfiles,
+} from './memory/user-learning.js';
+import {
   abortHermesJob,
   appendHermesJobEvent,
   createHermesJob,
@@ -60,6 +66,7 @@ import type {
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(clerkAuthMiddleware);
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 function stringArray(value: unknown): string[] {
@@ -70,6 +77,10 @@ function suggestedAction(value: unknown): SuggestedActionKind {
   return value === 'open_sync_pr' || value === 'ping_teammate' || value === 'none'
     ? value
     : 'ping_teammate';
+}
+
+function stringMeta(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function hermesJobEventType(value: unknown): HermesJobEventType | null {
@@ -90,11 +101,16 @@ function hermesJobEventType(value: unknown): HermesJobEventType | null {
 app.post('/api/token', async (req, res) => {
   const { room, identity, name, githubLogin } = req.body ?? {};
   if (!room || !identity) return res.status(400).json({ error: 'room+identity required' });
+  const user = requestUser(req);
   const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
     identity,
     name,
     ttl: '4h',
-    metadata: JSON.stringify({ githubLogin: githubLogin ?? name }),
+    metadata: JSON.stringify({
+      githubLogin: githubLogin ?? name,
+      email: stringMeta(req.body?.profile?.email),
+      imageUrl: stringMeta(req.body?.profile?.imageUrl),
+    }),
   });
   at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true });
   const agents = env.LIVEKIT_AGENT_NAME
@@ -113,6 +129,19 @@ app.post('/api/token', async (req, res) => {
     departureTimeout: 20,
     agents,
   });
+  if (user) {
+    await recordUserPodContext({
+      clerkUserId: user.clerkUserId,
+      podId: String(room),
+      memberName: typeof name === 'string' ? name : String(identity),
+      action: 'joined_pod',
+      metadata: {
+        identity: String(identity),
+        email: stringMeta(req.body?.profile?.email) ?? null,
+        imageUrl: stringMeta(req.body?.profile?.imageUrl) ?? null,
+      },
+    });
+  }
   res.json({ token: await at.toJwt(), url: env.LIVEKIT_URL });
 });
 
@@ -150,6 +179,22 @@ app.get('/api/memory/stats', async (_req, res) => {
   }
 });
 
+app.get('/api/memory/users', async (_req, res) => {
+  try {
+    res.json(await listUserLearningProfiles());
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post('/api/memory/users/refresh', async (_req, res) => {
+  try {
+    res.json({ profiles: await refreshUserLearningProfiles() });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // Live presence: who is currently connected in each pod's LiveKit room.
 app.get('/api/presence', async (_req, res) => {
   try {
@@ -170,7 +215,24 @@ app.get('/api/pods', async (_req, res) => {
 
 app.post('/api/pods', async (req, res) => {
   try {
-    res.status(201).json(await createPod(req.body ?? {}));
+    const pod = await createPod(req.body ?? {});
+    const user = requestUser(req);
+    if (user) {
+      await recordUserPodContext({
+        clerkUserId: user.clerkUserId,
+        podId: pod.id,
+        memberName: stringMeta(req.body?.profile?.displayName),
+        action: 'created_pod',
+        metadata: {
+          podName: pod.name,
+          repo: pod.repo,
+          identity: stringMeta(req.body?.profile?.displayName) ?? null,
+          email: stringMeta(req.body?.profile?.email) ?? null,
+          imageUrl: stringMeta(req.body?.profile?.imageUrl) ?? null,
+        },
+      });
+    }
+    res.status(201).json(await getPod(pod.id));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -186,6 +248,15 @@ app.patch('/api/pods/:id', async (req, res) => {
   try {
     const pod = await updatePod(req.params.id, req.body ?? {});
     if (!pod) return res.status(404).json({ error: 'pod not found' });
+    const user = requestUser(req);
+    if (user) {
+      await recordUserPodContext({
+        clerkUserId: user.clerkUserId,
+        podId: pod.id,
+        action: 'updated_pod',
+        metadata: { podName: pod.name, repo: pod.repo },
+      });
+    }
     res.json(pod);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -203,7 +274,21 @@ app.post('/api/pods/:id/members', async (req, res) => {
   try {
     const pod = await addMember(req.params.id, req.body?.name ?? '');
     if (!pod) return res.status(404).json({ error: 'pod not found' });
-    res.json(pod);
+    const user = requestUser(req);
+    if (user) {
+      await recordUserPodContext({
+        clerkUserId: user.clerkUserId,
+        podId: pod.id,
+        memberName: typeof req.body?.name === 'string' ? req.body.name.trim() : undefined,
+        action: 'added_member',
+        metadata: {
+          identity: typeof req.body?.name === 'string' ? req.body.name.trim() : null,
+          email: stringMeta(req.body?.profile?.email) ?? null,
+          imageUrl: stringMeta(req.body?.profile?.imageUrl) ?? null,
+        },
+      });
+    }
+    res.json(await getPod(pod.id));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -306,15 +391,14 @@ app.post('/api/internal/pods/:id/live-conversation/:sessionId/note', async (req,
     const note = typeof req.body?.note === 'string' ? req.body.note : '';
     const identity = typeof req.body?.identity === 'string' ? req.body.identity : undefined;
     const kind = typeof req.body?.kind === 'string' ? req.body.kind : undefined;
-    res.status(201).json(
-      await recordLiveConversationNote({
+    const saved = await recordLiveConversationNote({
         podId: req.params.id,
         sessionId: req.params.sessionId,
         identity,
         kind,
         note,
-      }),
-    );
+      });
+    res.status(201).json(saved);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }

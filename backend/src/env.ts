@@ -1,4 +1,6 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+
+config({ path: ['.env.local', '../.env.local', '.env', '../.env'] });
 
 function req(name: string): string {
   const v = process.env[name];
@@ -42,6 +44,7 @@ export const env = {
   VOYAGE_EMBEDDING_MODEL: opt('VOYAGE_EMBEDDING_MODEL', 'voyage-4-lite'),
   // Server
   PORT: Number(opt('PORT', '8787')),
+  CLERK_SECRET_KEY: opt('CLERK_SECRET_KEY'),
   NUDGE_COOLDOWN_MS: Number(opt('NUDGE_COOLDOWN_MS', '180000')),
   RESEARCH_OVERLAP_THRESHOLD: Number(opt('RESEARCH_OVERLAP_THRESHOLD', '0.6')),
   INTERNAL_AGENT_TOKEN: opt('INTERNAL_AGENT_TOKEN'),

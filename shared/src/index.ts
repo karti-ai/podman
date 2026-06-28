@@ -1,5 +1,6 @@
 export type { Pod, PodInput, Engineer } from './pod.js';
 export type { EngineerContext } from './engineer.js';
+export type { UserLearningPodSummary, UserLearningProfile } from './user-learning.js';
 export type {
   PodActivityEvent,
   PodActivityKind,

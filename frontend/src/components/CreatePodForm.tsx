@@ -17,17 +17,19 @@ import { cn } from '@/lib/utils';
 export function CreatePodForm({
   busy,
   onCreate,
+  defaultMemberName = '',
   compact = false,
 }: {
   busy: boolean;
   onCreate: (input: PodInput) => Promise<void>;
+  defaultMemberName?: string;
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(compact);
   const [name, setName] = useState('');
   const [repo, setRepo] = useState('karti-ai/podman');
   const [description, setDescription] = useState('');
-  const [firstMember, setFirstMember] = useState('');
+  const [firstMember, setFirstMember] = useState(defaultMemberName);
 
   async function submit() {
     if (!name.trim()) return;
@@ -40,7 +42,7 @@ export function CreatePodForm({
       });
       setName('');
       setDescription('');
-      setFirstMember('');
+      setFirstMember(defaultMemberName);
       if (!compact) setOpen(false);
     } catch {
       /* parent owns the visible error */

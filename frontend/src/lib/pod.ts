@@ -11,11 +11,17 @@ export async function fetchPodToken(
   podId: string,
   identity: string,
   name: string,
+  getToken?: () => Promise<string | null>,
+  profile?: { displayName?: string; email?: string; imageUrl?: string },
 ): Promise<{ token: string; url: string }> {
+  const clerkToken = await getToken?.();
   const res = await fetch(`${BACKEND_URL}/api/token`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ room: podId, identity, name }),
+    headers: {
+      'content-type': 'application/json',
+      ...(clerkToken ? { authorization: `Bearer ${clerkToken}` } : {}),
+    },
+    body: JSON.stringify({ room: podId, identity, name, profile }),
   });
   if (!res.ok) throw new Error(`token request failed: ${res.status}`);
   return res.json();
@@ -33,8 +39,14 @@ export type JoinResult = { mode: 'live'; room: Room } | { mode: 'dev'; room: nul
  * connected — screen sharing is a separate, deliberate action (see PodView) so
  * a denied/slow screen prompt never blocks or fails the join.
  */
-export async function joinPod(podId: string, identity: string, name: string): Promise<JoinResult> {
-  const { token, url } = await fetchPodToken(podId, identity, name);
+export async function joinPod(
+  podId: string,
+  identity: string,
+  name: string,
+  getToken?: () => Promise<string | null>,
+  profile?: { displayName?: string; email?: string; imageUrl?: string },
+): Promise<JoinResult> {
+  const { token, url } = await fetchPodToken(podId, identity, name, getToken, profile);
 
   if (!isLiveKitConfigured(url)) {
     console.warn('[podman] LiveKit not configured — dev mock join');
