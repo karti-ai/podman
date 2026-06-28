@@ -20,6 +20,7 @@ import { initMemory } from './memory/db.js';
 const POD_ROOM = process.env.POD_ROOM ?? 'demo-pod';
 const HERMES_IDENTITY = 'podman-hermes';
 const SAMPLE_INTERVAL_MS = 1000; // ~1 fps to the vision model
+const SHUTDOWN_GRACE_MS = 5000;
 
 async function agentToken(room: string): Promise<string> {
   const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
@@ -29,6 +30,20 @@ async function agentToken(room: string): Promise<string> {
   });
   at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true });
   return at.toJwt();
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function main() {
@@ -46,6 +61,7 @@ async function main() {
   console.log(`[agent] ${HERMES_IDENTITY} joined room ${POD_ROOM}`);
 
   const lastSent = new Map<string, number>();
+  const inFlight = new Set<string>();
   const activeStreams = new Map<string, ReadableStreamDefaultReader<VideoFrameEvent>>();
 
   const streamKey = (
@@ -69,16 +85,22 @@ async function main() {
   const processFrame = async (engineerId: string, event: VideoFrameEvent) => {
     const now = Date.now();
     if (now - (lastSent.get(engineerId) ?? 0) < SAMPLE_INTERVAL_MS) return;
+    if (inFlight.has(engineerId)) return;
     lastSent.set(engineerId, now);
+    inFlight.add(engineerId);
 
-    const rgba = event.frame.convert(VideoBufferType.RGBA);
-    const jpeg = await sharp(Buffer.from(rgba.data), {
-      raw: { width: rgba.width, height: rgba.height, channels: 4 },
-    })
-      .resize({ width: 1280, withoutEnlargement: true })
-      .jpeg({ quality: 70 })
-      .toBuffer();
-    await podman.onScreenFrame(engineerId, jpeg);
+    try {
+      const rgba = event.frame.convert(VideoBufferType.RGBA);
+      const jpeg = await sharp(Buffer.from(rgba.data), {
+        raw: { width: rgba.width, height: rgba.height, channels: 4 },
+      })
+        .resize({ width: 1280, withoutEnlargement: true })
+        .jpeg({ quality: 70 })
+        .toBuffer();
+      await podman.onScreenFrame(engineerId, jpeg);
+    } finally {
+      inFlight.delete(engineerId);
+    }
   };
 
   room.on(
@@ -97,7 +119,7 @@ async function main() {
           while (activeStreams.get(key) === reader) {
             const { done, value } = await reader.read();
             if (done) break;
-            await processFrame(id, value).catch((err) =>
+            void processFrame(id, value).catch((err) =>
               console.error(`[agent] frame sample failed for ${id}: ${(err as Error).message}`),
             );
           }
@@ -129,10 +151,15 @@ async function main() {
     }
   });
 
+  let shuttingDown = false;
   const shutdown = async () => {
-    await Promise.all([...activeStreams.keys()].map(stopStream));
-    await room.disconnect();
-    await dispose();
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await withTimeout(
+      Promise.all([...activeStreams.keys()].map(stopStream)).then(() => room.disconnect()),
+      SHUTDOWN_GRACE_MS,
+    );
+    await withTimeout(dispose(), SHUTDOWN_GRACE_MS);
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
