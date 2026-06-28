@@ -39,13 +39,45 @@ export async function createSyncPr(input: { headBranch: string; file: string; su
     ref: `refs/heads/${branch}`,
     sha: mainRef.object.sha,
   });
+
+  const artifactPath = `podman-sync-artifacts/${branch}.md`;
+  const body = [
+    '# PodMan Sync Artifact',
+    '',
+    `- File: \`${input.file || 'unknown'}\``,
+    `- Source branch hint: \`${input.headBranch || 'not provided'}\``,
+    `- Created: ${new Date().toISOString()}`,
+    '',
+    '## Coordination Summary',
+    '',
+    input.summary || 'PodMan detected a coordination risk before the relevant work was pushed.',
+    '',
+    '## Suggested Next Step',
+    '',
+    'Coordinate ownership before pushing or merging overlapping local work.',
+    '',
+  ].join('\n');
+
+  await gh.rest.repos.createOrUpdateFileContents({
+    owner,
+    repo,
+    branch,
+    path: artifactPath,
+    message: `PodMan sync artifact for ${input.file || 'active work'}`,
+    content: Buffer.from(body).toString('base64'),
+  });
+
   const { data: pr } = await gh.rest.pulls.create({
     owner,
     repo,
     title: `PodMan: sync ${input.file} before collision`,
     head: branch,
     base: 'main',
-    body: input.summary,
+    body: [
+      input.summary,
+      '',
+      `PodMan created a visible sync artifact at \`${artifactPath}\` so the team can coordinate before pushing overlapping work.`,
+    ].join('\n'),
   });
   return pr;
 }

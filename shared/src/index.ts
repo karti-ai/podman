@@ -9,6 +9,7 @@ export type {
   SuggestedActionKind,
 } from './intervention.js';
 export * from './messages.js';
+export type { HermesMessage } from './messages.js';
 export type {
   PodGraph,
   PodGraphNode,

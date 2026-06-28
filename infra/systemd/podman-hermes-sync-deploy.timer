@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll origin/main and let Hermes deploy clean fast-forward changes
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+AccuracySec=30s
+Unit=podman-hermes-sync-deploy.service
+
+[Install]
+WantedBy=timers.target

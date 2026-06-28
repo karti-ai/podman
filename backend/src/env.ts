@@ -25,6 +25,7 @@ export const env = {
   GEMINI_API_KEY: reqAny('GEMINI_API_KEY', ['GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY']),
   GEMINI_VISION_MODEL: opt('GEMINI_VISION_MODEL', 'gemini-2.0-flash'),
   GEMINI_LIVE_MODEL: opt('GEMINI_LIVE_MODEL', 'gemini-3.1-flash-tts-preview'),
+  GEMINI_EMBEDDING_MODEL: opt('GEMINI_EMBEDDING_MODEL', 'gemini-embedding-001'),
   // GitHub
   GITHUB_TOKEN: req('GITHUB_TOKEN'),
   GITHUB_REPO: req('GITHUB_REPO'), // owner/name
@@ -34,6 +35,7 @@ export const env = {
   VOYAGE_EMBEDDING_MODEL: opt('VOYAGE_EMBEDDING_MODEL', 'voyage-4-lite'),
   // Server
   PORT: Number(opt('PORT', '8787')),
+  NUDGE_COOLDOWN_MS: Number(opt('NUDGE_COOLDOWN_MS', '180000')),
 } as const;
 
 export function repoParts(): { owner: string; repo: string } {

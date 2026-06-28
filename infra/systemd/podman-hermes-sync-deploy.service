@@ -1,0 +1,16 @@
+[Unit]
+Description=PodMan Hermes git sync and deploy
+After=network-online.target podman-platform-api.service podman-platform-agent.service caddy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/podman
+Environment=NODE_ENV=production
+Environment=PODMAN_DEPLOY_REMOTE=origin
+Environment=PODMAN_DEPLOY_BRANCH=main
+Environment=PODMAN_HERMES_STATE_DIR=/var/log/podman
+EnvironmentFile=/root/podman/backend/.env
+ExecStart=/usr/bin/node scripts/hermes-sync-deploy.mjs
+Nice=5
+IOSchedulingClass=best-effort

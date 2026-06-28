@@ -4,6 +4,8 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   CircleDotIcon,
+  ExternalLinkIcon,
+  MessageSquareIcon,
   MonitorUpIcon,
   RadioTowerIcon,
   SparklesIcon,
@@ -80,7 +82,7 @@ export function PodView({
   const [sharing, setSharing] = useState(false);
   const [playingBeat, setPlayingBeat] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const { active, respond } = useInterventions(room);
+  const { active, hermes, voiceCue, actionUrl, respond } = useInterventions(room);
 
   const audioRef = useRef<HTMLDivElement>(null);
   const beatRef = useRef<BeatHandle | null>(null);
@@ -178,6 +180,15 @@ export function PodView({
       setSharing(true);
     } catch (e) {
       setNote(`Screen share stopped: ${(e as Error).message}`);
+    }
+  }
+
+  async function answerIntervention(status: 'accepted' | 'dismissed', accepted: boolean) {
+    setNote(null);
+    try {
+      await respond(status, accepted);
+    } catch (e) {
+      setNote(`Action failed: ${(e as Error).message}`);
     }
   }
 
@@ -299,6 +310,24 @@ export function PodView({
                         {active.suggestedAction.kind.replaceAll('_', ' ')}
                       </Badge>
                     </div>
+                    {hermes?.interventionId === active.id && (
+                      <div className="rounded-lg border border-dashed p-3">
+                        <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <MessageSquareIcon className="size-3.5" />
+                          Hermes message
+                        </div>
+                        <p className="text-sm leading-6">{hermes.text}</p>
+                      </div>
+                    )}
+                    {voiceCue && (
+                      <div className="rounded-lg border border-dashed p-3">
+                        <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <Volume2Icon className="size-3.5" />
+                          Voice cue
+                        </div>
+                        <p className="text-sm leading-6">{voiceCue}</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <Empty className="min-h-72 border-0 p-0">
@@ -314,14 +343,28 @@ export function PodView({
                     </EmptyHeader>
                   </Empty>
                 )}
+                {actionUrl && (
+                  <a
+                    href={actionUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-4 flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium hover:bg-muted"
+                  >
+                    Sync PR artifact opened
+                    <ExternalLinkIcon className="size-4" />
+                  </a>
+                )}
               </CardContent>
               {active && (
                 <CardFooter className="justify-end gap-2">
-                  <Button variant="outline" onClick={() => void respond('dismissed', false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => void answerIntervention('dismissed', false)}
+                  >
                     <XIcon data-icon="inline-start" />
                     Dismiss
                   </Button>
-                  <Button onClick={() => void respond('accepted', true)}>
+                  <Button onClick={() => void answerIntervention('accepted', true)}>
                     <CheckIcon data-icon="inline-start" />
                     Accept
                   </Button>

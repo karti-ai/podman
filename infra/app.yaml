@@ -49,6 +49,7 @@ services:
       - { key: GEMINI_API_KEY, scope: RUN_TIME, type: SECRET }
       - { key: GEMINI_VISION_MODEL, scope: RUN_TIME, value: gemini-2.0-flash }
       - { key: GEMINI_LIVE_MODEL, scope: RUN_TIME, value: gemini-3.1-flash-tts-preview }
+      - { key: GEMINI_EMBEDDING_MODEL, scope: RUN_TIME, value: gemini-embedding-001 }
       - { key: GITHUB_TOKEN, scope: RUN_TIME, type: SECRET }
       - { key: GITHUB_REPO, scope: RUN_TIME, value: karti-ai/podman }
       - { key: MONGODB_URI, scope: RUN_TIME, type: SECRET }
@@ -74,6 +75,7 @@ workers:
       - { key: GEMINI_API_KEY, scope: RUN_TIME, type: SECRET }
       - { key: GEMINI_VISION_MODEL, scope: RUN_TIME, value: gemini-2.0-flash }
       - { key: GEMINI_LIVE_MODEL, scope: RUN_TIME, value: gemini-3.1-flash-tts-preview }
+      - { key: GEMINI_EMBEDDING_MODEL, scope: RUN_TIME, value: gemini-embedding-001 }
       - { key: GITHUB_TOKEN, scope: RUN_TIME, type: SECRET }
       - { key: GITHUB_REPO, scope: RUN_TIME, value: karti-ai/podman }
       - { key: MONGODB_URI, scope: RUN_TIME, type: SECRET }

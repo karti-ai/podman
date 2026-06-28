@@ -7,9 +7,21 @@ export const DATA_TOPIC = 'podman.intervention' as const;
 /** Wire messages exchanged between the PodMan agent and engineer PWAs. */
 export type DataMessage =
   | { type: 'COLLISION'; collision: Collision; intervention: Intervention }
+  | { type: 'HERMES_MESSAGE'; message: HermesMessage }
   | { type: 'VOICE_CUE'; text: string }
   | { type: 'ACK'; interventionId: string; status: InterventionStatus; note?: string }
   | { type: 'GIT_REPORT'; report: LocalGitReport };
+
+/** A targeted teammate/project-channel notification from the Hermes action layer. */
+export interface HermesMessage {
+  id: string;
+  podId: string;
+  interventionId: string;
+  recipients: string[];
+  text: string;
+  urgency: 'normal' | 'urgent';
+  createdAt: string;
+}
 
 /** Outcome of an intervention — the supervision signal for policy learning. */
 export interface InterventionOutcome {

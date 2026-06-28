@@ -46,6 +46,20 @@ export async function postOutcome(outcome: InterventionOutcome): Promise<void> {
   if (!res.ok) throw new Error(`outcome post failed: ${res.status}`);
 }
 
+export async function createSyncPr(input: {
+  headBranch?: string;
+  file?: string;
+  summary?: string;
+}): Promise<{ url: string; number: number }> {
+  return json(
+    await fetch(`${BACKEND_URL}/api/sync-pr`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
 // --- Pods CRUD ---
 
 export async function listPods(): Promise<Pod[]> {

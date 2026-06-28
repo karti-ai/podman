@@ -9,6 +9,7 @@ import { getGitStates } from '../memory/db.js';
 import { recallSimilar } from '../memory/vectors.js';
 import { shouldIntervene, preferredAction } from '../memory/policy.js';
 import { speak } from '../voice/live.js';
+import { publishHermesMessage } from '../action/hermes.js';
 
 export class PodMan {
   private contexts = new Map<string, EngineerContext>();
@@ -54,7 +55,7 @@ export class PodMan {
   }
 
   private async handle(collision: Collision): Promise<void> {
-    const prior = await recallSimilar(collision); // Loop A: vector recall raises confidence
+    const prior = await recallSimilar(collision); // Loop A: exact/vector recall raises confidence
     if (prior) collision.severity = 'critical';
     if (!shouldIntervene(collision, prior)) return; // Loop B: policy gate
 
@@ -64,7 +65,11 @@ export class PodMan {
     const message =
       `${names} are both editing ${collision.file}` +
       (collision.githubState?.unpushed ? ' and one has unpushed changes.' : '.') +
-      (prior ? ` I've seen this conflict pattern before.` : '');
+      (prior?.priorOutcome?.accepted
+        ? ` I've seen this conflict pattern before; last time the team accepted the ${prior.priorIntervention?.suggestedAction.kind.replaceAll('_', ' ') ?? 'suggested'} action.`
+        : prior
+          ? ` I've seen this conflict pattern before.`
+          : '');
 
     const intervention: Intervention = {
       id: `int_${Date.now()}`,
@@ -72,7 +77,14 @@ export class PodMan {
       podId: this.podId,
       kind: 'card',
       message,
-      suggestedAction: { kind: action },
+      suggestedAction: {
+        kind: action,
+        params: {
+          file: collision.file,
+          summary: message,
+          engineers: collision.engineers,
+        },
+      },
       status: 'pending',
       createdAt: new Date().toISOString(),
     };
@@ -83,6 +95,7 @@ export class PodMan {
       reliable: true,
       topic: DATA_TOPIC,
     });
-    await speak(this.room, message); // Gemini voice audio into the room
+    await publishHermesMessage(this.room, collision, intervention);
+    if (collision.severity === 'critical') await speak(this.room, message);
   }
 }

@@ -170,14 +170,51 @@ The droplet production fallback uses systemd units from `infra/systemd/`:
 ```bash
 sudo install -m 0644 infra/systemd/podman-platform-api.service /etc/systemd/system/
 sudo install -m 0644 infra/systemd/podman-platform-agent.service /etc/systemd/system/
+sudo install -m 0644 infra/systemd/podman-hermes-*.service infra/systemd/podman-hermes-*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now podman-platform-api podman-platform-agent
+sudo systemctl enable --now podman-platform-api podman-platform-agent podman-hermes-watchdog.timer podman-hermes-sync-deploy.timer
 ```
 
 Expected runtime proof:
 
 ```bash
 systemctl is-active podman-platform-api podman-platform-agent
+systemctl is-active podman-hermes-watchdog.timer
+systemctl is-active podman-hermes-sync-deploy.timer
 curl http://127.0.0.1:8787/health
 journalctl -u podman-platform-agent -n 20 --no-pager
+journalctl -u podman-hermes-watchdog -n 40 --no-pager
+```
+
+## Hermes-managed operations layer
+
+The app processes are still supervised by systemd, but Hermes now owns the
+operations loop around them:
+
+- `pnpm hermes:watchdog` checks systemd services, public routes, `/health`,
+  `/api/pods`, and `pnpm deploy:doctor`.
+- `podman-hermes-watchdog.timer` runs that watchdog every five minutes.
+- `podman-hermes-sync-deploy.timer` polls `origin/main` every two minutes. If
+  the tree is clean and the remote moved, it fast-forwards, installs, builds,
+  publishes `frontend/dist` to `/var/www/podman`, restarts the API/agent/Caddy,
+  and runs the strict watchdog.
+- Failed URL checks trigger restarts of the PodMan API, PodMan agent, and Caddy.
+- Failed service checks restart only the unhealthy service.
+- Caddy is validated and reloaded after public route failures.
+- Reports are written to `/var/log/podman/hermes-watchdog-latest.json`.
+- Set `PODMAN_ALERT_WEBHOOK_URL` to send failed reports to Discord, Slack, or a
+  generic webhook receiver.
+- `pnpm hermes:install` installs the timer units and a local pre-push hook that
+  gates major pushes with typecheck, lint, and a non-remediating watchdog check.
+
+The strict gate for production readiness is:
+
+```bash
+pnpm hermes:watchdog:strict
+```
+
+Manual deploy-sync run:
+
+```bash
+pnpm hermes:sync-deploy
 ```

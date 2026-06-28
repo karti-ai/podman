@@ -272,6 +272,30 @@ async function checkGeminiVoiceModel() {
   return `${model}, generated ${Buffer.from(audio, 'base64').byteLength} audio bytes`;
 }
 
+async function checkGeminiEmbeddings() {
+  const key = configuredGeminiKey();
+  const model = process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-001';
+  const res = await doFetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model,
+    )}:embedContent?key=${encodeURIComponent(key.value)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        content: { parts: [{ text: 'PodMan vector memory check' }] },
+        taskType: 'RETRIEVAL_DOCUMENT',
+        outputDimensionality: 768,
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(await responseError('Gemini embedding check', res));
+  const body = await res.json();
+  const dims = body.embedding?.values?.length;
+  if (!dims) throw new Error('Gemini embedding response had no vector');
+  return `${model}, ${dims} dimensions`;
+}
+
 async function checkVoyage() {
   if (!isSet('VOYAGE_API_KEY')) throw new Error('VOYAGE_API_KEY is not set');
   const model = process.env.VOYAGE_EMBEDDING_MODEL ?? 'voyage-4-lite';
@@ -325,6 +349,7 @@ await check('mongo ping', checkMongo);
 await check('github repo access', checkGitHub);
 await check('gemini vision model', checkGeminiVision);
 await check('gemini voice model', checkGeminiVoiceModel);
+await check('gemini embeddings', checkGeminiEmbeddings);
 
 if (isSet('VOYAGE_API_KEY')) {
   await check('voyage embeddings', checkVoyage);

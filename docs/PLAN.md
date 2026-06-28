@@ -178,29 +178,34 @@ From the remote plan snapshot and health check on `2026-06-27`:
 - Treat this as operational evidence, not architecture truth. Reverify before
   demo.
 
-### Partial / stubbed
+### Partial / completed since the original audit
 
-- `backend/src/voice/live.ts` logs only; it does not publish real voice/audio
-  into LiveKit yet.
-- Hermes is a product/action/messaging layer in the plan, but the current repo
-  does not yet implement a complete Hermes notification bridge.
-- `backend/src/memory/vectors.ts` is not a real Voyage/Atlas Vector Search
-  implementation yet.
-- Exact-signature recall is the required MVP fallback before vectors.
-- `backend/src/memory/policy.ts` is a simple gate; it does not learn thresholds
-  from outcomes yet.
-- `POST /api/sync-pr` creates a PR artifact path but does not yet build a
-  meaningful sync diff.
-- Frontend `PodView` has only a placeholder intervention area unless/until live
-  intervention rendering is wired.
+- `backend/src/voice/live.ts` now publishes a `VOICE_CUE` fallback and attempts
+  Gemini audio publication into LiveKit. The agent only calls it for critical
+  interventions so voice remains an urgent escalation path.
+- Hermes now has a data-channel teammate message path via `HERMES_MESSAGE` on
+  the existing `podman.intervention` topic. This is the MVP notification bridge,
+  not a Slack/Discord integration.
+- `backend/src/memory/vectors.ts` implements exact-signature recall first and
+  can use Voyage/Gemini embeddings with Atlas Vector Search when configured.
+- Exact-signature recall now attaches prior interventions/outcomes and prefers
+  accepted real collisions, giving the learning beat deterministic MongoDB
+  proof before vector search.
+- `backend/src/memory/policy.ts` now uses severity, per-pod cooldown, and prior
+  outcome history. It is still a simple policy, not a trained threshold model.
+- `POST /api/sync-pr` now creates a visible Markdown sync artifact commit before
+  opening the PR.
+- Frontend `PodView` renders intervention cards, Hermes messages, voice cues,
+  and the accepted sync PR artifact link.
 - Browser screen publishing exists, but the active join path must be proven to
   tag tracks as screen share so the backend agent can filter them correctly. The
   `origin/main` screen-share button appears to address this; local code remains
   behind until that commit is merged.
 - `GIT_REPORT` exists in shared types and agent handling. `scripts/podman-agent.mjs`
   is the finished per-laptop git sidecar — polls every 15 s, upserts git fields
-  to `engineer_states` collection. Not yet wired to publish a `GIT_REPORT` data
-  channel message into the LiveKit room (agent fusion step still needed).
+  to `engineer_states` collection. The backend agent now fuses those Mongo
+  git-state fields into live contexts before collision detection; direct
+  LiveKit `GIT_REPORT` publication from the sidecar remains optional.
 - Background research recommendations are a product requirement and demo goal,
   not an implemented research agent yet.
 - Deployment reliability is partial; API health is reachable, but API/static
@@ -667,15 +672,16 @@ Before saying PodMan is demo-ready:
 - [ ] Backend agent subscribes to the screen-share track.
 - [ ] Agent logs at least one parsed Gemini context from a real IDE screen.
 - [x] Local git report supplies dirty/unpushed truth on a schedule (`scripts/podman-agent.mjs` — 15 s poll → MongoDB `engineer_states`). Agent fusion still needed.
-- [ ] Frontend renders a real intervention card.
-- [ ] Hermes notification path works for teammate messages.
+- [x] Frontend renders a real intervention card.
+- [x] Hermes notification path works for teammate messages over the LiveKit data
+      channel.
 - [ ] Voice is heard only for urgent escalation or a fallback is declared.
-- [ ] Outcome ACK writes to MongoDB.
-- [ ] `/api/memory/stats` shows counts increasing.
-- [ ] Second similar situation uses prior memory in the message.
+- [x] Outcome ACK writes to MongoDB and updates intervention status.
+- [x] `/api/memory/stats` shows counts increasing.
+- [x] Second similar situation uses prior exact memory in the message.
 - [ ] Research recommendation card is evidence-backed, or fallback collision demo
       is used.
-- [ ] Sync PR action creates a visible GitHub artifact if used in demo.
+- [x] Sync PR action creates a visible GitHub artifact if used in demo.
 - [ ] DigitalOcean deployment or local fallback is rehearsed.
 - [ ] Backup recording is ready on a separate device.
 

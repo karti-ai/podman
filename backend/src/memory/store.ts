@@ -34,7 +34,14 @@ export async function recordIntervention(intervention: Intervention): Promise<vo
 }
 
 export async function recordOutcome(outcome: InterventionOutcome): Promise<void> {
-  await persist('outcome', async () => (await collections()).outcomes.insertOne({ ...outcome }));
+  await persist('outcome', async () => {
+    const c = await collections();
+    await c.outcomes.insertOne({ ...outcome });
+    await c.interventions.updateOne(
+      { id: outcome.interventionId },
+      { $set: { status: outcome.accepted ? 'accepted' : 'dismissed' } },
+    );
+  });
 }
 
 /** Document counts per collection — used by the /api/memory/stats endpoint. */

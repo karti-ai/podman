@@ -1,0 +1,17 @@
+[Unit]
+Description=PodMan Hermes operations watchdog
+After=network-online.target mongod.service podman-platform-api.service podman-platform-agent.service caddy.service
+Wants=network-online.target mongod.service podman-platform-api.service podman-platform-agent.service caddy.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/podman
+Environment=NODE_ENV=production
+Environment=PODMAN_HERMES_STRICT=0
+Environment=PODMAN_HERMES_REMEDIATE=1
+Environment=PODMAN_HERMES_STATE_DIR=/var/log/podman
+Environment=PODMAN_PUBLIC_URL=https://165-22-129-249.sslip.io/
+EnvironmentFile=/root/podman/backend/.env
+ExecStart=/usr/bin/node scripts/hermes-watchdog.mjs
+Nice=5
+IOSchedulingClass=best-effort

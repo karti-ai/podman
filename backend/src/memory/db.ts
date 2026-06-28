@@ -99,6 +99,7 @@ export async function initMemory(): Promise<void> {
       'collisions.memorySignature',
       () => c.collisions.createIndex({ podId: 1, memorySignature: 1 }),
     ],
+    ['collisions.file', () => c.collisions.createIndex({ podId: 1, file: 1, detectedAt: -1 })],
     ['interventions.collisionId', () => c.interventions.createIndex({ collisionId: 1 })],
     ['outcomes.interventionId', () => c.outcomes.createIndex({ interventionId: 1 })],
   ];

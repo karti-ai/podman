@@ -4,7 +4,7 @@ Deploy targets for PodMan on DigitalOcean.
 
 - `Dockerfile` — builds the backend runtime image from the monorepo root
 - `app.yaml` — DigitalOcean App Platform spec: static site, API service, agent worker
-- `systemd/` — local droplet service units for the API and agent worker
+- `systemd/` — local droplet service/timer units for the API, agent worker, public healthcheck, and Hermes watchdog
 
 Full deploy spec and env var reference in [`docs/digitalocean.md`](../docs/digitalocean.md).
 
@@ -31,9 +31,10 @@ On the demo droplet, serve the API and worker with systemd instead of tmux:
 ```bash
 sudo install -m 0644 infra/systemd/podman-platform-api.service /etc/systemd/system/
 sudo install -m 0644 infra/systemd/podman-platform-agent.service /etc/systemd/system/
+sudo install -m 0644 infra/systemd/podman-hermes-*.service infra/systemd/podman-hermes-*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now podman-platform-api podman-platform-agent
-sudo systemctl status podman-platform-api podman-platform-agent
+sudo systemctl enable --now podman-platform-api podman-platform-agent podman-hermes-watchdog.timer podman-hermes-sync-deploy.timer
+sudo systemctl status podman-platform-api podman-platform-agent podman-hermes-watchdog.timer podman-hermes-sync-deploy.timer
 ```
 
 The services expect:
@@ -47,6 +48,7 @@ Useful checks:
 ```bash
 curl http://127.0.0.1:8787/health
 journalctl -u podman-platform-api -u podman-platform-agent -f
+journalctl -u podman-hermes-watchdog -f
 ```
 
 ## DigitalOcean deploy
@@ -73,9 +75,34 @@ local LiveKit host.
 
 ```bash
 sudo cp infra/systemd/podman-platform-*.service /etc/systemd/system/
+sudo cp infra/systemd/podman-hermes-watchdog.* /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now podman-platform-api podman-platform-agent
-systemctl status podman-platform-api podman-platform-agent
+sudo systemctl enable --now podman-platform-api podman-platform-agent podman-hermes-watchdog.timer
+systemctl status podman-platform-api podman-platform-agent podman-hermes-watchdog.timer
+```
+
+## Hermes operations layer
+
+Hermes is the operations copilot for the droplet. The durable layer is:
+
+- `podman-hermes-watchdog.timer` runs `pnpm hermes:watchdog` every five minutes.
+- `podman-hermes-sync-deploy.timer` polls `origin/main` every two minutes and deploys clean fast-forward changes.
+- `podman-public-healthcheck.timer` keeps the fast public URL restart loop.
+- `/var/log/podman/hermes-watchdog-latest.json` records the latest watchdog report.
+- `.git/hooks/pre-push`, installed by `pnpm hermes:install`, gates major pushes with typecheck, lint, and a non-remediating watchdog check.
+
+Install or refresh all local ops wiring:
+
+```bash
+pnpm hermes:install
+```
+
+Manual one-shot checks:
+
+```bash
+pnpm hermes:watchdog
+pnpm hermes:watchdog:strict
+pnpm hermes:sync-deploy
 ```
 
 ## Fallback (demo safety)

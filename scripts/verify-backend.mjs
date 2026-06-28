@@ -155,6 +155,12 @@ async function verifyMemoryRecall() {
     detectedAt: new Date().toISOString(),
   };
   await recordCollision(seed);
+  const { getDb } = await import('../backend/dist/memory/db.js');
+  const db = await getDb();
+  const stored = await db.collection('collisions').findOne({ id: seed.id });
+  if (!Array.isArray(stored?.embedding) || stored.embedding.length < 1) {
+    fail('memory collision was not enriched with an embedding');
+  }
   const recalled = await recallSimilar({ ...seed, id: `${seed.id}_query` });
   if (!recalled) fail('memory recall did not find seeded collision');
 }

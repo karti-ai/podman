@@ -1,0 +1,11 @@
+[Unit]
+Description=Run PodMan Hermes operations watchdog every five minutes
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=podman-hermes-watchdog.service
+
+[Install]
+WantedBy=timers.target
