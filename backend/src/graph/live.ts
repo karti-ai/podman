@@ -53,6 +53,14 @@ export function isFilePath(f: string): boolean {
 /** Engineer names that are test/verification artifacts, not real teammates. */
 const ENGINEER_NOISE = /(^verify\b|^.$|testrepo|-?check\b|\d{4,})/i;
 
+const MAX_FILES = 9;
+
+/** Short, readable node label — last two path segments (full path goes in summary). */
+function shortLabel(file: string): string {
+  const parts = file.split('/').filter(Boolean);
+  return parts.slice(-2).join('/') || file;
+}
+
 const STATUS_RANK: Record<PodGraphNodeStatus, number> = {
   stable: 0,
   active: 1,
@@ -183,7 +191,7 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     });
     const file = o.currentFile ? normalizeFile(o.currentFile) : '';
     if (isFilePath(file)) {
-      const f = upsertNode(b, 'file', file, { label: file });
+      const f = upsertNode(b, 'file', file, { label: shortLabel(file), summary: file });
       upsertEdge(b, eng, f, 'editing', o.activity ?? 'edits', Math.max(0.4, o.confidence ?? 0.5));
     }
   }
@@ -226,14 +234,18 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
       continue;
     }
     const cNode = upsertNode(b, 'collision', col.id, {
-      label: col.symbol ? `${file}#${col.symbol}` : file,
+      label: shortLabel(file),
       status: 'risk',
       weight: SEVERITY_WEIGHT[col.severity] ?? 0.7,
       summary: `${col.engineers.join(' + ')} on ${file}${
         (col as { memorySignature?: string }).memorySignature ? ' · seen before' : ''
       }`,
     });
-    const fNode = upsertNode(b, 'file', file, { label: file, status: 'risk' });
+    const fNode = upsertNode(b, 'file', file, {
+      label: shortLabel(file),
+      summary: file,
+      status: 'risk',
+    });
     upsertEdge(b, fNode, cNode, 'touches', 'hot', 0.6);
     for (const name of col.engineers) {
       const eng = upsertNode(b, 'engineer', name, { label: name });
@@ -322,6 +334,20 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     if (n.kind !== 'collision') continue;
     if (![...b.edges.values()].some((e) => e.kind === 'collides' && e.target === id)) dropNode(id);
   }
+  // Cap file nodes to the most-connected (collision files first).
+  const fileNodes = [...b.nodes.values()].filter((n) => n.kind === 'file');
+  if (fileNodes.length > MAX_FILES) {
+    const inCollision = (id: string) =>
+      [...b.edges.values()].some((e) => e.kind === 'touches' && e.source === id);
+    const degree = (id: string) =>
+      [...b.edges.values()].filter((e) => e.source === id || e.target === id).length;
+    fileNodes.sort(
+      (a, z) =>
+        Number(inCollision(z.id)) - Number(inCollision(a.id)) || degree(z.id) - degree(a.id),
+    );
+    for (const n of fileNodes.slice(MAX_FILES)) dropNode(n.id);
+  }
+
   // Files / interventions left with no edges -> drop.
   for (const [id, n] of [...b.nodes]) {
     if (n.kind === 'file' || n.kind === 'intervention') {
