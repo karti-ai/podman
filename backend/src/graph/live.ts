@@ -60,7 +60,7 @@ function upsertNode(
   key: string,
   patch: Partial<Omit<PodGraphNode, 'id' | 'kind' | 'x' | 'y'>>,
 ): string {
-  const id = nodeKey(kind, key);
+  const id = nodeKey(kind, kind === 'engineer' ? key.toLowerCase() : key);
   const cur = b.nodes.get(id);
   if (!cur) {
     b.nodes.set(id, {
@@ -158,24 +158,7 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     upsertNode(b, 'engineer', name, { label: name });
   }
 
-  // 2. Git truth (engineer_states): unpushed work + edited files.
-  for (const [name, git] of gitStates) {
-    const files = git.changedFiles.map(parseGitStatusPath).filter(Boolean);
-    const eng = upsertNode(b, 'engineer', name, {
-      label: name,
-      status: files.length > 0 ? 'risk' : 'active',
-      summary: files.length
-        ? `${files.length} changed file(s) on ${git.branch ?? 'detached'}`
-        : `on ${git.branch ?? 'detached'}`,
-      weight: 0.7,
-    });
-    for (const file of files) {
-      const f = upsertNode(b, 'file', file, { label: file, status: 'risk' });
-      upsertEdge(b, eng, f, 'editing', 'edits', 0.6);
-    }
-  }
-
-  // 3. Vision (observations): who is active and on which file, with confidence.
+  // 2. Vision (observations): who is active and on which file, with confidence.
   for (const o of observations) {
     if (!o.engineerId) continue;
     const recent = o.observedAt && now - new Date(o.observedAt).getTime() < ACTIVE_WINDOW_MS;
@@ -190,7 +173,7 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     }
   }
 
-  // 4. Collisions: the detected overlaps (fused git + vision).
+  // 3. Collisions: the detected overlaps (fused git + vision).
   const collisionById = new Map<string, (typeof collisionDocs)[number]>();
   for (const col of collisionDocs) {
     collisionById.set(col.id, col);
@@ -208,6 +191,24 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     for (const name of col.engineers) {
       const eng = upsertNode(b, 'engineer', name, { label: name });
       upsertEdge(b, eng, cNode, 'collides', 'in', SEVERITY_WEIGHT[col.severity] ?? 0.7);
+    }
+  }
+
+  // 4. Git truth (engineer_states): mark unpushed work and confirm editing on
+  //    files vision/collisions already surfaced — not the whole repo diff.
+  for (const [name, git] of gitStates) {
+    const files = git.changedFiles.map(parseGitStatusPath).filter(Boolean);
+    const eng = upsertNode(b, 'engineer', name, {
+      label: name,
+      status: files.length > 0 ? 'risk' : 'active',
+      summary: files.length
+        ? `${files.length} changed file(s) on ${git.branch ?? 'detached'}`
+        : `on ${git.branch ?? 'detached'}`,
+      weight: 0.7,
+    });
+    for (const file of files) {
+      const fid = nodeKey('file', file);
+      if (b.nodes.has(fid)) upsertEdge(b, eng, fid, 'editing', 'edits', 0.6);
     }
   }
 
