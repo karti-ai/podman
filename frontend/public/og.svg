@@ -1,0 +1,16 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#0b0f17" />
+  <g fill="none" stroke="#34d399" opacity="0.12">
+    <circle cx="1050" cy="140" r="70" stroke-width="6" />
+    <circle cx="1050" cy="140" r="140" stroke-width="5" />
+    <circle cx="1050" cy="140" r="215" stroke-width="4" />
+  </g>
+  <rect x="90" y="150" width="104" height="104" rx="24" fill="#0f1629" stroke="#1f2a3a" stroke-width="2" />
+  <circle cx="176" cy="170" r="8.5" fill="#34d399" />
+  <text x="142" y="228" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="66" fill="#34d399">P</text>
+  <text x="222" y="232" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="68" fill="#e7eaf0">PodMan</text>
+  <text x="92" y="356" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="46" fill="#e7eaf0">The teammate that sees what git can&#8217;t.</text>
+  <text x="92" y="416" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#9aa4b2">Catches merge collisions before anyone pushes.</text>
+  <rect x="92" y="500" width="13" height="13" rx="3" fill="#34d399" />
+  <text x="118" y="512" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="30" fill="#34d399">podman.live</text>
+</svg>

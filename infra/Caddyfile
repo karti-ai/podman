@@ -22,3 +22,19 @@ lk.165-22-129-249.sslip.io {
 		}
 	}
 }
+
+podman.live, www.podman.live {
+	route {
+		handle /api/* {
+			reverse_proxy 127.0.0.1:8787
+		}
+
+		handle /health {
+			reverse_proxy 127.0.0.1:8787
+		}
+
+		root * /var/www/podman
+		try_files {path} /index.html
+		file_server
+	}
+}
