@@ -54,6 +54,8 @@ Use PodMan tools before making claims about current work, git state, collisions,
 team memory, or recent decisions. Keep spoken answers short. Prefer one useful next step.
 If a critical collision event arrives, stop the current turn and state the alert immediately.
 To find code, files, symbols, or how something is implemented in the repository, call search_repo.
+For git commit history, authorship, recent changes, or which commit introduced something, call
+repo_recent_commits or repo_find_commits.
 For complex repository, terminal, GitHub, MongoDB, build, install, deploy, or multi-step tasks,
 call delegate_to_hermes. Do not run those actions directly. If the user says stop, wait, cancel,
 or change of plans while Hermes is running, call abort_active_hermes_job immediately.
@@ -88,6 +90,25 @@ def request_json(path: str, *, method: str = "GET", body: dict[str, Any] | None 
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
         raise RuntimeError(f"PodMan backend returned {exc.code}: {detail}") from exc
+
+
+async def _run_git(args: list[str], timeout: float = 15.0) -> tuple[int, str, str]:
+    """Run a read-only git command inside the repo checkout and capture its output."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "-C",
+            REPO_ROOT,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        return 124, "", "git command timed out"
+    except FileNotFoundError:
+        return 127, "", "git is not available on this host"
+    return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
 
 class PodManLiveAgent(Agent):
@@ -211,6 +232,73 @@ class PodManLiveAgent(Agent):
             return f'No matches for "{cleaned}" in {REPO_SLUG}.'
         body = "\n".join(lines)
         return f'Matches for "{cleaned}" in {REPO_SLUG} (path:line):\n{body}'[:7000]
+
+    @function_tool()
+    async def repo_recent_commits(
+        self, context: RunContext, path: str = "", author: str = "", limit: int = 15
+    ) -> str:
+        """Show recent git commit history for github.com/karti-ai/podman: who committed what and when.
+        Optionally scope to a file or folder (path) or filter by author name/email (author).
+        Use this for questions about recent changes, authorship, or a specific file's history.
+        """
+        n = max(1, min(int(limit or 15), 50))
+        args = [
+            "log",
+            f"--max-count={n}",
+            "--no-color",
+            "--date=short",
+            "--pretty=format:%h | %an | %ad | %s",
+        ]
+        if author.strip():
+            args.append(f"--author={author.strip()}")
+        if path.strip():
+            args += ["--", path.strip()]
+        code, out, err = await _run_git(args)
+        if code != 0:
+            return f"Git history lookup failed: {err.strip()[:300] or 'unknown error'}"
+        out = out.strip()
+        if not out:
+            scope = f" for {path.strip()}" if path.strip() else ""
+            who = f" by {author.strip()}" if author.strip() else ""
+            return f"No commits found{scope}{who}."
+        return f"Recent commits in {REPO_SLUG} (hash | author | date | subject):\n{out}"[:7000]
+
+    @function_tool()
+    async def repo_find_commits(
+        self, context: RunContext, query: str, by: str = "message", limit: int = 15
+    ) -> str:
+        """Find commits in github.com/karti-ai/podman. by='message' searches commit messages;
+        by='code' finds commits that added or removed the query text in the code (pickaxe).
+        Use by='code' for "which commit introduced X"; use by='message' for "commits about X".
+        """
+        cleaned = " ".join(query.split()).strip()
+        if not cleaned:
+            return "Provide a non-empty query."
+        n = max(1, min(int(limit or 15), 50))
+        args = [
+            "log",
+            f"--max-count={n}",
+            "--no-color",
+            "--date=short",
+            "--pretty=format:%h | %an | %ad | %s",
+        ]
+        mode = by.strip().lower()
+        if mode == "code":
+            args.append(f"-S{cleaned}")
+        else:
+            mode = "message"
+            args += ["-i", f"--grep={cleaned}"]
+        code, out, err = await _run_git(args)
+        if code != 0:
+            return f"Commit search failed: {err.strip()[:300] or 'unknown error'}"
+        out = out.strip()
+        if not out:
+            return f'No commits found matching "{cleaned}" (by {mode}).'
+        return (
+            f'Commits in {REPO_SLUG} matching "{cleaned}" (by {mode}) — hash | author | date | subject:\n{out}'[
+                :7000
+            ]
+        )
 
     @function_tool()
     async def delegate_to_hermes(
