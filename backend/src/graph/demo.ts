@@ -8,9 +8,45 @@ import type { PodGraph } from '@podman/shared';
  * auth* — is the continual-learning story the demo lights up.
  */
 export function createDemoPodGraph(podId: string): PodGraph {
+  const base = Date.now();
+  const at = (secAgo: number): string => new Date(base - secAgo * 1000).toISOString();
   return {
     podId,
     generatedAt: new Date().toISOString(),
+    loop: [
+      { key: 'observe', title: 'OBSERVE', value: '5', detail: '~5/s vision contexts', active: false },
+      { key: 'store', title: 'STORE', value: '124', detail: 'memory vectors · Atlas', active: false },
+      { key: 'predict', title: 'PREDICT', value: '2', detail: 'collisions flagged', active: true },
+      { key: 'outcome', title: 'OUTCOME', value: '1/0', detail: 'accepted · dismissed', active: false },
+      { key: 'adapt', title: 'ADAPT', value: '5', detail: 'learned owners', active: false },
+    ],
+    activity: [
+      {
+        id: 'demo-learn',
+        at: at(20),
+        kind: 'learned_from',
+        text: 'Memory updated: Karti owns auth.ts (confidence ↑)',
+      },
+      { id: 'demo-out', at: at(24), kind: 'outcome', text: 'Intervention accepted by the pod' },
+      {
+        id: 'demo-warn',
+        at: at(40),
+        kind: 'warns',
+        text: 'PodMan: "Karti & Yahya are both in auth.ts — open a sync PR?" → card sent',
+      },
+      {
+        id: 'demo-col',
+        at: at(58),
+        kind: 'collision',
+        text: 'Critical overlap on auth.ts · Karti + Yahya',
+      },
+      {
+        id: 'demo-edit',
+        at: at(72),
+        kind: 'editing',
+        text: 'Yahya opened auth.ts — unpushed changes',
+      },
+    ],
     metrics: [
       {
         label: 'Learned owners',
