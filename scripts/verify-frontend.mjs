@@ -171,6 +171,27 @@ async function waitForPublishedScreenShare(roomName) {
   );
 }
 
+async function boxOf(locator, name) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error(`${name} did not have a visible bounding box`);
+  return box;
+}
+
+function assertNoOverlap(left, main, right, label) {
+  if (left.x + left.width > main.x + 2) {
+    throw new Error(`${label}: left sidebar overlaps main workspace`);
+  }
+  if (main.x + main.width > right.x + 2) {
+    throw new Error(`${label}: right sidebar overlaps main workspace`);
+  }
+}
+
+function assertStableTopbar(before, after, label) {
+  if (Math.abs(before.x - after.x) > 2 || Math.abs(before.width - after.width) > 2) {
+    throw new Error(`${label}: top bar moved or resized with sidebar state`);
+  }
+}
+
 let preview = null;
 if (shouldStartPreview) {
   preview = spawn(
@@ -267,6 +288,74 @@ try {
   }
   await page.getByRole('heading', { name: 'My stream' }).waitFor({ timeout: 15_000 });
   await page.getByRole('heading', { name: 'Team stream' }).waitFor({ timeout: 15_000 });
+  const topbar = page.getByTestId('pod-topbar');
+  const mainWorkspace = page.getByTestId('pod-main-workspace');
+  const mySidebar = page.getByTestId('my-stream-sidebar');
+  const teamSidebar = page.getByTestId('team-stream-sidebar');
+  await topbar.waitFor({ timeout: 15_000 });
+  await mainWorkspace.waitFor({ timeout: 15_000 });
+  await mySidebar.waitFor({ timeout: 15_000 });
+  await teamSidebar.waitFor({ timeout: 15_000 });
+  if ((await topbar.getByRole('button', { name: /stream|team/i }).count()) > 0) {
+    throw new Error('pod top bar contains sidebar stream/team controls');
+  }
+  const expandedLayout = {
+    topbar: await boxOf(topbar, 'top bar expanded'),
+    main: await boxOf(mainWorkspace, 'main workspace expanded'),
+    left: await boxOf(mySidebar, 'my stream sidebar expanded'),
+    right: await boxOf(teamSidebar, 'team stream sidebar expanded'),
+  };
+  assertNoOverlap(
+    expandedLayout.left,
+    expandedLayout.main,
+    expandedLayout.right,
+    'expanded layout',
+  );
+  await page.locator('[data-testid="my-stream-toggle"]:visible').click();
+  await page.waitForTimeout(300);
+  const leftCollapsedLayout = {
+    main: await boxOf(mainWorkspace, 'main workspace after left collapse'),
+    left: await boxOf(mySidebar, 'my stream sidebar collapsed'),
+    right: await boxOf(teamSidebar, 'team stream sidebar with left collapsed'),
+    topbar: await boxOf(topbar, 'top bar after left collapse'),
+  };
+  if (leftCollapsedLayout.left.width >= expandedLayout.left.width - 24) {
+    throw new Error('my stream sidebar did not collapse into a compact rail');
+  }
+  if (leftCollapsedLayout.main.width <= expandedLayout.main.width) {
+    throw new Error('main workspace did not expand after my stream collapsed');
+  }
+  assertNoOverlap(
+    leftCollapsedLayout.left,
+    leftCollapsedLayout.main,
+    leftCollapsedLayout.right,
+    'left collapsed layout',
+  );
+  assertStableTopbar(expandedLayout.topbar, leftCollapsedLayout.topbar, 'left collapsed layout');
+  await page.locator('[data-testid="team-stream-toggle"]:visible').click();
+  await page.waitForTimeout(300);
+  const bothCollapsedLayout = {
+    main: await boxOf(mainWorkspace, 'main workspace after both collapse'),
+    left: await boxOf(mySidebar, 'my stream sidebar with both collapsed'),
+    right: await boxOf(teamSidebar, 'team stream sidebar collapsed'),
+    topbar: await boxOf(topbar, 'top bar after both collapse'),
+  };
+  if (bothCollapsedLayout.right.width >= expandedLayout.right.width - 24) {
+    throw new Error('team stream sidebar did not collapse into a compact rail');
+  }
+  if (bothCollapsedLayout.main.width <= leftCollapsedLayout.main.width) {
+    throw new Error('main workspace did not expand after team stream collapsed');
+  }
+  assertNoOverlap(
+    bothCollapsedLayout.left,
+    bothCollapsedLayout.main,
+    bothCollapsedLayout.right,
+    'both collapsed layout',
+  );
+  assertStableTopbar(expandedLayout.topbar, bothCollapsedLayout.topbar, 'both collapsed layout');
+  await page.locator('[data-testid="my-stream-toggle"]:visible').click();
+  await page.locator('[data-testid="team-stream-toggle"]:visible').click();
+  await page.waitForTimeout(300);
 
   const joinedText = await page.locator('body').innerText();
   const hasPodView =
