@@ -76,13 +76,30 @@ Additive routes in `backend/src/server.ts` (shared file — additive only).
 
 - `shared/src/graph.ts` — `PodGraph`, `PodGraphNode/Edge/Metric`, `GraphNodeDoc`, `GraphEdgeDoc`
 - `backend/src/graph/demo.ts` — `createDemoPodGraph(podId)` (grounded in the demo-pod crew)
-- `backend/src/graph/store.ts` — `loadPodGraph`, `seedGraph`, `reachFrom` (`$graphLookup`)
+- `backend/src/graph/live.ts` — **`materializePodGraph(podId)`**: builds the graph from the real
+  collections (pods, engineer_states, observations, collisions, interventions, outcomes)
+- `backend/src/graph/store.ts` — `loadPodGraph` (live → seeded → demo), `seedGraph`, `reachFrom` (`$graphLookup`)
 - `backend/src/graph/seed.ts` — `pnpm graph:seed` (writes demo into `team_model` + graph collections)
 - `frontend/src/lib/graph.ts` — `fetchPodGraph(podId)`
-- `frontend/src/components/GraphView.tsx` — dark-Bauhaus SVG graph (toggle from `App.tsx`)
+- `frontend/src/components/GraphView.tsx` — shadcn-themed SVG graph (theme-aware; toggle from `App.tsx`)
 
-## Demo-first plan
+## Live data → graph mapping
 
-1. Serve `createDemoPodGraph()` from the route (demo-stable, no DB dependency on the demo path).
-2. `pnpm graph:seed` writes the same graph into Mongo so `$graphLookup` is real, not a mock.
-3. Swap `loadPodGraph` to read live `team_model.graph` once the ingest pipeline populates it.
+`materializePodGraph` reads the 5 real collections per pod and emits a `PodGraph`:
+
+| Collection        | Produces                                                                   |
+| ----------------- | -------------------------------------------------------------------------- |
+| `pods.members`    | baseline **engineer** nodes                                                |
+| `engineer_states` | engineer `risk` if unpushed; **file** nodes (git paths parsed); `editing`  |
+| `observations`    | engineer `active`; **file** from `currentFile`; `editing` (strength=conf.) |
+| `collisions`      | **collision** nodes; `collides` (eng→col) + `touches` (file→col)           |
+| `interventions`   | **intervention** nodes; `warns` (col→intervention)                         |
+| `outcomes`        | `learned_from` (intervention→owner) on accepted; flips nodes to `learned`  |
+
+Metrics (learned owners / open risk paths / accept rate) are live counts.
+
+## Fallback order (`loadPodGraph`)
+
+1. **Live** — `materializePodGraph` from the real collections (returns `null` if only bare roster).
+2. **Seeded** — `team_model.graph` (from `pnpm graph:seed`).
+3. **Demo** — `createDemoPodGraph()` (stage safety; never an empty canvas).

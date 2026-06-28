@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { MoreHorizontalIcon, PlusIcon, Trash2Icon, UserRoundIcon, VideoIcon } from 'lucide-react';
+import {
+  BrainCircuitIcon,
+  MoreHorizontalIcon,
+  PlusIcon,
+  Trash2Icon,
+  UserRoundIcon,
+  VideoIcon,
+} from 'lucide-react';
 import type { Pod, PodInput } from '@podman/shared';
 import { Avatar, AvatarBadge, AvatarFallback, AvatarGroup } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +49,7 @@ export function PodCard({
   onRemoveMember: _onRemoveMember,
   onUpdate,
   onDelete,
+  onOpenGraph,
 }: {
   pod: Pod;
   busy: boolean;
@@ -52,6 +60,7 @@ export function PodCard({
   onRemoveMember: (id: string, name: string) => void;
   onUpdate: (id: string, patch: PodInput) => void;
   onDelete: (id: string) => void;
+  onOpenGraph: (id: string) => void;
 }) {
   const [newMember, setNewMember] = useState('');
   const [editing, setEditing] = useState(false);
@@ -100,6 +109,10 @@ export function PodCard({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuGroup>
+                  <DropdownMenuItem onSelect={() => onOpenGraph(pod.id)}>
+                    <BrainCircuitIcon />
+                    Team memory
+                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setEditing(true)}>Edit pod</DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
