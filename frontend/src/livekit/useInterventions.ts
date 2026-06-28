@@ -39,6 +39,11 @@ export function useInterventions(room: Room | null) {
       if (msg.type === 'COLLISION') {
         setActive(msg.intervention);
         setActionUrl(null);
+        // Clear the prior intervention's cue/message so a new card never shows a
+        // stale voice line. The fresh ones arrive right after on the same
+        // reliable channel (ordered: COLLISION -> HERMES_MESSAGE -> VOICE_CUE).
+        setVoiceCue(null);
+        setHermes(null);
       }
       if (msg.type === 'HERMES_MESSAGE') setHermes(msg.message);
       if (msg.type === 'VOICE_CUE') {
@@ -79,6 +84,8 @@ export function useInterventions(room: Room | null) {
         { reliable: true, topic: DATA_TOPIC },
       );
       setActive(null);
+      setVoiceCue(null);
+      setHermes(null);
       return status;
     },
     [active, room],
