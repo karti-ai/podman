@@ -86,3 +86,13 @@ Additive routes in `backend/src/server.ts` (shared file — additive only).
 1. Serve `createDemoPodGraph()` from the route (demo-stable, no DB dependency on the demo path).
 2. `pnpm graph:seed` writes the same graph into Mongo so `$graphLookup` is real, not a mock.
 3. Swap `loadPodGraph` to read live `team_model.graph` once the ingest pipeline populates it.
+
+## Component convention
+
+UI is built from the shared **shadcn / ruixen** registry — add primitives with
+`npx shadcn@latest add "https://ruixen.com/r/[component]"` and compose from
+`@/components/ui/*` (`Button`, `Badge`, `Card`, …) using the design tokens
+(`var(--card)` / `--foreground` / `--border` / …). Only the SVG node-link **canvas**
+in `GraphView.tsx` is bespoke (3 SVG-only CSS rules); the chrome (header, toggles,
+metric cards, detail panel, legend) is composed from the primitives + the app's
+Tailwind utility patterns. No hand-rolled component stylesheets.
