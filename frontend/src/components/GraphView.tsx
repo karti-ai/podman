@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { PodGraph, PodGraphNode, PodGraphEdge, PodGraphNodeKind } from '@podman/shared';
 import { fetchPodGraph } from '../lib/graph.js';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 type Mode = 'risk' | 'learn' | 'all';
 
@@ -142,193 +144,174 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
     setSelected(null);
   }
 
+  const toggleVariant = (m: Mode) => (mode === m && !selected ? 'default' : 'outline');
+
   return (
-    <div className="pm-graph">
-      <style>{`
-        .pm-graph{font-family:inherit;background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-        .pm-graph *{box-sizing:border-box}
-        .pm-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
-        .pm-ttl{font-weight:600;font-size:16px;color:var(--foreground)}
-        .pm-sub{font-size:12px;color:var(--muted-foreground);margin-top:3px}
-        .pm-x{background:transparent;border:1px solid var(--border);color:var(--foreground);font-size:13px;padding:6px 12px;border-radius:8px;cursor:pointer}
-        .pm-x:hover{background:var(--accent)}
-        .pm-bar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
-        .pm-btn{font-size:13px;color:var(--foreground);background:transparent;border:1px solid var(--border);padding:6px 12px;cursor:pointer;border-radius:8px}
-        .pm-btn:hover{background:var(--accent)}
-        .pm-btn.on{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
-        .pm-grid{display:grid;grid-template-columns:190px 1fr 250px}
-        .pm-col{padding:14px}
-        .pm-railR{border-left:1px solid var(--border);background:var(--muted)}
-        .pm-st{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);margin:2px 0 12px;font-weight:500}
-        .pm-kpi{border:1px solid var(--border);background:var(--card);border-radius:10px;padding:11px 12px;margin-bottom:10px}
-        .pm-num{font-weight:600;font-size:26px;line-height:1;font-variant-numeric:tabular-nums;color:var(--foreground)}
-        .pm-klab{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);margin-top:6px;font-weight:500}
-        .pm-kdet{font-size:11px;color:var(--muted-foreground);margin-top:5px;line-height:1.45}
-        .pm-canvas{background:var(--card);border-left:1px solid var(--border);border-right:1px solid var(--border);min-height:472px}
-        .pm-canvas svg{width:100%;height:auto;display:block}
-        .pm-node{cursor:pointer}
-        .pm-lbl{font-weight:500;font-size:11px;fill:var(--foreground)}
-        .pm-dim{opacity:.18;transition:opacity .25s}
-        .pm-dkind{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground)}
-        .pm-dname{font-weight:600;font-size:18px;margin:5px 0 10px;color:var(--foreground)}
-        .pm-drow{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid var(--border);color:var(--muted-foreground)}
-        .pm-drow b{color:var(--foreground);font-weight:500}
-        .pm-note{font-size:13px;color:var(--muted-foreground);line-height:1.55;margin-top:10px}
-        .pm-legend{display:flex;gap:14px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted-foreground)}
-        .pm-lg{display:flex;align-items:center;gap:6px}
-        .pm-sw{width:13px;height:13px;display:inline-block}
-        @media(max-width:760px){.pm-grid{grid-template-columns:1fr}.pm-railR{border-left:0;border-top:1px solid var(--border)}.pm-canvas{border:0;border-top:1px solid var(--border)}}
-      `}</style>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <style>{`
+          .pm-node{cursor:pointer}
+          .pm-lbl{fill:var(--foreground);font-size:11px;font-weight:500}
+          .pm-dim{opacity:.18;transition:opacity .25s}
+        `}</style>
 
-      <div className="pm-hd">
-        <div>
-          <div className="pm-ttl">Team memory</div>
-          <div className="pm-sub">What PodMan learned · {podId}</div>
-        </div>
-        <button className="pm-x" onClick={onClose}>
-          ← Pods
-        </button>
-      </div>
+        <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <div>
+              <h2 className="text-base font-medium">Team memory</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">What PodMan learned · {podId}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={onClose}>
+              ← Pods
+            </Button>
+          </div>
 
-      <div className="pm-bar">
-        <button
-          className={`pm-btn ${mode === 'risk' && !selected ? 'on' : ''}`}
-          onClick={() => pick('risk')}
-        >
-          Risk path
-        </button>
-        <button
-          className={`pm-btn ${mode === 'learn' && !selected ? 'on' : ''}`}
-          onClick={() => pick('learn')}
-        >
-          Learning edges
-        </button>
-        <button
-          className={`pm-btn ${mode === 'all' && !selected ? 'on' : ''}`}
-          onClick={() => pick('all')}
-        >
-          Whole graph
-        </button>
-      </div>
+          <div className="flex flex-wrap gap-2 border-b px-4 py-3">
+            <Button variant={toggleVariant('risk')} size="sm" onClick={() => pick('risk')}>
+              Risk path
+            </Button>
+            <Button variant={toggleVariant('learn')} size="sm" onClick={() => pick('learn')}>
+              Learning edges
+            </Button>
+            <Button variant={toggleVariant('all')} size="sm" onClick={() => pick('all')}>
+              Whole graph
+            </Button>
+          </div>
 
-      {error && (
-        <p style={{ padding: '16px', color: 'var(--destructive)', fontSize: 13 }}>
-          Graph error: {error}
-        </p>
-      )}
-      {!graph && !error && (
-        <p style={{ padding: '16px', color: 'var(--muted-foreground)', fontSize: 13 }}>
-          Loading graph…
-        </p>
-      )}
+          {error && <p className="px-4 py-4 text-sm text-destructive">Graph error: {error}</p>}
+          {!graph && !error && (
+            <p className="px-4 py-4 text-sm text-muted-foreground">Loading graph…</p>
+          )}
 
-      {graph && (
-        <>
-          <div className="pm-grid">
-            <div className="pm-col">
-              <div className="pm-st">Workflow metrics</div>
-              {graph.metrics.map((m) => (
-                <div className="pm-kpi" key={m.label}>
-                  <div className="pm-num">{m.value}</div>
-                  <div className="pm-klab">{m.label}</div>
-                  <div className="pm-kdet">{m.detail}</div>
+          {graph && (
+            <>
+              <div className="grid lg:grid-cols-[190px_1fr_250px]">
+                <div className="space-y-3 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Workflow metrics
+                  </p>
+                  {graph.metrics.map((m) => (
+                    <div key={m.label} className="rounded-lg border bg-card px-3 py-2.5">
+                      <p className="text-2xl font-medium tabular-nums">{m.value}</p>
+                      <p className="mt-1 text-xs font-medium uppercase text-muted-foreground">
+                        {m.label}
+                      </p>
+                      <p className="mt-1 text-xs leading-snug text-muted-foreground">{m.detail}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="pm-canvas">
-              <svg viewBox="0 0 720 472" role="img" aria-label="PodMan team-memory graph">
-                {graph.edges.map((e) => {
-                  const a = nodeById.get(e.source);
-                  const b = nodeById.get(e.target);
-                  if (!a || !b) return null;
-                  const s = EDGE[e.kind];
-                  return (
-                    <line
-                      key={e.id}
-                      className={dimEdge(e.id) ? 'pm-dim' : undefined}
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      stroke={s.c}
-                      strokeWidth={hotEdge(e.id) ? s.w + 1.6 : s.w}
-                      strokeDasharray={s.dash ? '7 6' : undefined}
-                      strokeLinecap="round"
-                    />
-                  );
-                })}
-                {graph.nodes.map((n) => (
-                  <g
-                    key={n.id}
-                    className={`pm-node ${dimNode(n.id) ? 'pm-dim' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${n.kind}: ${n.label}`}
-                    onClick={() => setSelected((cur) => (cur === n.id ? null : n.id))}
-                    onKeyDown={(ev) => {
-                      if (ev.key === 'Enter' || ev.key === ' ') {
-                        ev.preventDefault();
-                        setSelected((cur) => (cur === n.id ? null : n.id));
-                      }
-                    }}
+                <div className="min-h-[472px] border-y bg-card lg:border-x lg:border-y-0">
+                  <svg
+                    viewBox="0 0 720 472"
+                    role="img"
+                    aria-label="PodMan team-memory graph"
+                    className="block h-auto w-full"
                   >
-                    <NodeShape node={n} />
-                    <text className="pm-lbl" x={n.x} y={n.y + 33} textAnchor="middle">
-                      {n.label}
-                    </text>
-                  </g>
+                    {graph.edges.map((e) => {
+                      const a = nodeById.get(e.source);
+                      const b = nodeById.get(e.target);
+                      if (!a || !b) return null;
+                      const s = EDGE[e.kind];
+                      return (
+                        <line
+                          key={e.id}
+                          className={dimEdge(e.id) ? 'pm-dim' : undefined}
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke={s.c}
+                          strokeWidth={hotEdge(e.id) ? s.w + 1.6 : s.w}
+                          strokeDasharray={s.dash ? '7 6' : undefined}
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                    {graph.nodes.map((n) => (
+                      <g
+                        key={n.id}
+                        className={`pm-node ${dimNode(n.id) ? 'pm-dim' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${n.kind}: ${n.label}`}
+                        onClick={() => setSelected((cur) => (cur === n.id ? null : n.id))}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            setSelected((cur) => (cur === n.id ? null : n.id));
+                          }
+                        }}
+                      >
+                        <NodeShape node={n} />
+                        <text className="pm-lbl" x={n.x} y={n.y + 33} textAnchor="middle">
+                          {n.label}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                </div>
+
+                <div className="border-t bg-muted p-4 lg:border-l lg:border-t-0">
+                  {sel ? (
+                    <>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        {sel.kind}
+                      </p>
+                      <h3 className="mb-3 mt-1 text-lg font-medium">{sel.label}</h3>
+                      <div className="flex items-center justify-between border-b py-1.5 text-sm text-muted-foreground">
+                        <span>Status</span>
+                        <Badge variant="outline" style={{ color: statusColor(sel.status) }}>
+                          {sel.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between border-b py-1.5 text-sm text-muted-foreground">
+                        <span>Relationships</span>
+                        <span className="font-medium text-foreground">{relCount}</span>
+                      </div>
+                      <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                        {sel.summary}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Continual learning
+                      </p>
+                      <h3 className="mb-3 mt-1 text-lg font-medium">It learned</h3>
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        The violet{' '}
+                        <span className="font-medium" style={{ color: VIOLET }}>
+                          learned_from
+                        </span>{' '}
+                        edges are ownership PodMan retained from accepted interventions — the graph
+                        gets sharper every session. Click any node to trace its relationships.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 border-t px-4 py-2.5 text-xs text-muted-foreground">
+                {LEGEND.map((l) => (
+                  <span key={l.label} className="flex items-center gap-1.5">
+                    <span className="inline-block size-3" style={l.swatch} />
+                    {l.label}
+                  </span>
                 ))}
-              </svg>
-            </div>
-
-            <div className="pm-col pm-railR">
-              {sel ? (
-                <>
-                  <div className="pm-dkind">{sel.kind}</div>
-                  <div className="pm-dname">{sel.label}</div>
-                  <div className="pm-drow">
-                    <span>Status</span>
-                    <b style={{ color: statusColor(sel.status) }}>{sel.status}</b>
-                  </div>
-                  <div className="pm-drow">
-                    <span>Relationships</span>
-                    <b>{relCount}</b>
-                  </div>
-                  <div className="pm-note">{sel.summary}</div>
-                </>
-              ) : (
-                <>
-                  <div className="pm-dkind">Continual learning</div>
-                  <div className="pm-dname">It learned</div>
-                  <div className="pm-note">
-                    The violet <b style={{ color: VIOLET }}>learned_from</b> edges are ownership
-                    PodMan retained from accepted interventions — the graph gets sharper every
-                    session. Click any node to trace its relationships.
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="pm-legend">
-            {LEGEND.map((l) => (
-              <span className="pm-lg" key={l.label}>
-                <span className="pm-sw" style={l.swatch} />
-                {l.label}
-              </span>
-            ))}
-            <span className="pm-lg">
-              <span className="pm-sw" style={{ background: RED, height: 3 }} />
-              collides
-            </span>
-            <span className="pm-lg">
-              <span className="pm-sw" style={{ background: VIOLET, height: 3 }} />
-              learned_from
-            </span>
-          </div>
-        </>
-      )}
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-[3px] w-3" style={{ background: RED }} />
+                  collides
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-[3px] w-3" style={{ background: VIOLET }} />
+                  learned_from
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
