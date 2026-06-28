@@ -5,8 +5,6 @@
 [Gemini](https://ai.google.dev/)
 [DigitalOcean](https://www.digitalocean.com/)
 
-**2026 AI Engineer World's Fair Hackathon — Theme: Continual Learning**
-
 ## The bottleneck moved
 
 Models keep getting better, and more people can build software than ever before.
@@ -26,6 +24,9 @@ gives everyone a live picture of where the others are — without anyone having 
 stop and ask.
 
 ### The five-minute meeting that isn't
+
+<img width="800" height="705" alt="image" src="https://github.com/user-attachments/assets/4d26bd7a-177b-4650-8c99-bc2ef551d6bb" />
+
 
 > **What people assume:** "Quick question, five minutes."
 > **What actually happens:** the interrupted developer loses their place and needs
