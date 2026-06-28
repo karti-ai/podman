@@ -117,10 +117,9 @@ flowchart LR
   Mongo[("MongoDB Atlas<br/>team memory")]
 
   Dev -->|"open app · get token"| WebApi
-  Dev <-->|"live screens + voice"| LK
+  Dev <-->|"screens & voice out · cards & alerts in"| LK
   LK -->|"pre-commit work signal"| Agent --> Coord
   Coord -->|"nudge before duplicate work / clash"| LK
-  LK -->|"cards + spoken alerts"| Dev
   PyAgent <-->|"answer questions by voice"| LK
   Coord -->|"learn from every outcome"| Mongo
   PyAgent -->|"recall team context"| Mongo
