@@ -122,6 +122,17 @@ export async function addMember(id: string, name: string): Promise<Pod> {
   );
 }
 
+export async function testPodVoice(id: string): Promise<void> {
+  const res = await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/voice-test`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      message: 'PodMan voice test. Gemini TTS is playing through LiveKit.',
+    }),
+  });
+  if (!res.ok) throw new Error(`voice test failed: ${res.status}`);
+}
+
 export async function removeMember(id: string, name: string): Promise<Pod> {
   return json(
     await fetch(

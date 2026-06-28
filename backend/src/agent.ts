@@ -173,6 +173,12 @@ async function main() {
     await withTimeout(dispose(), SHUTDOWN_GRACE_MS);
     process.exit(0);
   };
+  room.on(RoomEvent.Disconnected, () => {
+    if (!shuttingDown) {
+      console.error('[agent] LiveKit disconnected; exiting so systemd restarts the worker');
+      process.exit(1);
+    }
+  });
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

@@ -95,6 +95,25 @@ async function verifyApi() {
   );
   if (!withMember.members.includes('Hermes')) fail('member add did not persist');
 
+  const hermesNotify = await json(
+    await doFetch(`${baseUrl}/api/pods/${encodeURIComponent(created.id)}/hermes/notify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Hermes verification notification.',
+        engineers: ['Alice', 'Bob'],
+        file: 'src/verify-hermes.ts',
+        dryRun: true,
+      }),
+    }),
+  );
+  if (
+    hermesNotify.livekit !== 'dry-run' ||
+    hermesNotify.intervention?.message !== 'Hermes verification notification.'
+  ) {
+    fail('Hermes notify endpoint returned unexpected payload');
+  }
+
   await json(
     await doFetch(`${baseUrl}/api/pods/${encodeURIComponent(created.id)}`, { method: 'DELETE' }),
   );
@@ -262,6 +281,7 @@ try {
           'health',
           'token',
           'pod-crud',
+          'hermes-notify',
           'collision',
           'memory-recall',
           'graph',

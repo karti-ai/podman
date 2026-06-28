@@ -1,6 +1,5 @@
 import { RoomEvent, type Room } from '@livekit/rtc-node';
 import type { EngineerContext, Collision, Intervention, DataMessage } from '@podman/shared';
-import { DATA_TOPIC } from '@podman/shared';
 import { analyzeFrame } from '../vision/gemini.js';
 import { detectCollisions } from '../collision/detector.js';
 import { getGithubState } from '../github/client.js';
@@ -13,12 +12,10 @@ import {
 import { getGitStates } from '../memory/db.js';
 import { recallSimilar } from '../memory/vectors.js';
 import { shouldIntervene, preferredAction } from '../memory/policy.js';
-import { speak } from '../voice/live.js';
-import { publishHermesMessage } from '../action/hermes.js';
+import { publishHermesIntervention } from '../action/hermes.js';
 
 export class PodMan {
   private contexts = new Map<string, EngineerContext>();
-  private encoder = new TextEncoder();
 
   constructor(
     private room: Room,
@@ -82,7 +79,7 @@ export class PodMan {
       (prior ? ' Seen before.' : '');
 
     // Spoken line stays short, but uses natural phrasing for Gemini TTS prosody.
-    const voiceLine = `Heads up. ${names} are both editing ${shortFile}. Please sync before pushing.`;
+    const voiceLine = `${names} are both editing ${shortFile}. Please sync before pushing.`;
 
     const intervention: Intervention = {
       id: `int_${Date.now()}`,
@@ -103,12 +100,11 @@ export class PodMan {
     };
     await recordIntervention(intervention);
 
-    const data: DataMessage = { type: 'COLLISION', collision, intervention };
-    await this.room.localParticipant?.publishData(this.encoder.encode(JSON.stringify(data)), {
-      reliable: true,
-      topic: DATA_TOPIC,
-    });
-    await publishHermesMessage(this.room, collision, intervention);
-    if (collision.severity === 'critical') await speak(this.room, voiceLine);
+    await publishHermesIntervention(
+      this.room,
+      collision,
+      intervention,
+      collision.severity === 'critical' ? voiceLine : undefined,
+    );
   }
 }

@@ -1,11 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
+import type { Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
-import { AccessToken, RoomConfiguration } from 'livekit-server-sdk';
+import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
 import { env } from './env.js';
 import { createSyncPr } from './github/client.js';
-import { recordOutcome, memoryStats } from './memory/store.js';
+import { recordCollision, recordIntervention, recordOutcome, memoryStats } from './memory/store.js';
 import { closeMemory, initMemory } from './memory/db.js';
 import {
   listPods,
@@ -20,12 +21,26 @@ import {
 import { getPresence, closeRoom } from './livekit/rooms.js';
 import { loadPodGraph, reachFrom } from './graph/store.js';
 import { listPodActivity } from './activity/store.js';
-import type { InterventionOutcome } from '@podman/shared';
+import { speakInRoom } from './voice/live.js';
+import { notifyHermesInterventionInRoom } from './action/hermes.js';
+import type { Collision, Intervention, InterventionOutcome, SuggestedActionKind } from '@podman/shared';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+}
+
+function suggestedAction(value: unknown): SuggestedActionKind {
+  return value === 'open_sync_pr' || value === 'ping_teammate' || value === 'none'
+    ? value
+    : 'ping_teammate';
+}
 
 // Mint a LiveKit token for an engineer joining a pod.
 app.post('/api/token', async (req, res) => {
@@ -38,9 +53,22 @@ app.post('/api/token', async (req, res) => {
     metadata: JSON.stringify({ githubLogin: githubLogin ?? name }),
   });
   at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true });
+  const agents = env.LIVEKIT_AGENT_NAME
+    ? [
+        new RoomAgentDispatch({
+          agentName: env.LIVEKIT_AGENT_NAME,
+          metadata: JSON.stringify({ podId: room }),
+        }),
+      ]
+    : undefined;
   // Auto-clean the room: close 60s after it empties, drop a participant 20s
   // after they disconnect. Applied when LiveKit auto-creates the room.
-  at.roomConfig = new RoomConfiguration({ name: room, emptyTimeout: 60, departureTimeout: 20 });
+  at.roomConfig = new RoomConfiguration({
+    name: room,
+    emptyTimeout: 60,
+    departureTimeout: 20,
+    agents,
+  });
   res.json({ token: await at.toJwt(), url: env.LIVEKIT_URL });
 });
 
@@ -137,6 +165,84 @@ app.post('/api/pods/:id/members', async (req, res) => {
   }
 });
 
+app.post('/api/pods/:id/voice-test', async (req, res) => {
+  const podId = req.params.id;
+  const message =
+    typeof req.body?.message === 'string' && req.body.message.trim()
+      ? req.body.message.trim()
+      : 'PodMan voice test. Gemini TTS is playing through LiveKit.';
+  try {
+    await speakInRoom(podId, message);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post('/api/pods/:id/hermes/notify', async (req, res) => {
+  const podId = req.params.id;
+  const pod = await getPod(podId);
+  if (!pod) return res.status(404).json({ error: 'pod not found' });
+
+  const body = req.body ?? {};
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!message) return res.status(400).json({ error: 'message is required' });
+
+  const now = new Date().toISOString();
+  const engineers = stringArray(body.engineers);
+  const recipients = engineers.length ? engineers : pod.members.slice(0, 2);
+  const file = typeof body.file === 'string' && body.file.trim() ? body.file.trim() : 'Hermes signal';
+  const urgent = body.urgency === 'urgent' || body.severity === 'critical';
+  const collision: Collision = {
+    id: typeof body.collisionId === 'string' && body.collisionId ? body.collisionId : `col_${Date.now()}`,
+    podId,
+    file,
+    symbol: typeof body.symbol === 'string' && body.symbol ? body.symbol : undefined,
+    engineers: recipients,
+    severity: urgent ? 'critical' : 'warn',
+    githubState: { unpushed: body.unpushed !== false },
+    detectedAt: now,
+  };
+  const intervention: Intervention = {
+    id:
+      typeof body.interventionId === 'string' && body.interventionId
+        ? body.interventionId
+        : `int_${Date.now()}`,
+    collisionId: collision.id,
+    podId,
+    kind: urgent ? 'voice' : 'card',
+    message,
+    suggestedAction: {
+      kind: suggestedAction(body.suggestedAction),
+      params: {
+        file,
+        engineers: recipients,
+        source: 'local-hermes',
+      },
+    },
+    status: 'pending',
+    createdAt: now,
+  };
+  const voiceLine =
+    urgent && body.speak !== false
+      ? typeof body.voiceLine === 'string' && body.voiceLine.trim()
+        ? body.voiceLine.trim()
+        : message
+      : undefined;
+
+  try {
+    await recordCollision(collision);
+    await recordIntervention(intervention);
+    if (body.dryRun === true) {
+      return res.status(202).json({ ok: true, collision, intervention, livekit: 'dry-run' });
+    }
+    await notifyHermesInterventionInRoom(podId, collision, intervention, voiceLine);
+    res.status(202).json({ ok: true, collision, intervention, livekit: 'notified' });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 app.delete('/api/pods/:id/members/:name', async (req, res) => {
   const pod = await removeMember(req.params.id, req.params.name);
   if (!pod) return res.status(404).json({ error: 'pod not found' });
@@ -206,6 +312,12 @@ app.get('/api/pods/:id/activity/stream', async (req, res) => {
 });
 
 const http = createServer(app);
+const sockets = new Set<Socket>();
+
+http.on('connection', (socket) => {
+  sockets.add(socket);
+  socket.on('close', () => sockets.delete(socket));
+});
 
 // ws relay: the agent pushes collision/intervention JSON here; PWAs subscribed by pod receive it.
 const wss = new WebSocketServer({ server: http, path: '/api/events' });
@@ -237,7 +349,11 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`[server] ${signal} received; shutting down`);
   for (const client of clients) client.close();
   wss.close();
-  await new Promise<void>((resolve) => http.close(() => resolve()));
+  for (const socket of sockets) socket.destroy();
+  await Promise.race([
+    new Promise<void>((resolve) => http.close(() => resolve())),
+    new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+  ]);
   await closeMemory().catch((e) => console.warn(`[memory] close failed: ${(e as Error).message}`));
   process.exit(0);
 }

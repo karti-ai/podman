@@ -20,9 +20,10 @@ import {
   WorkflowIcon,
   XIcon,
 } from 'lucide-react';
-import type { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
+import type { Room, RemoteTrack, RemoteTrackPublication } from 'livekit-client';
 import type { Pod, PodActivityEvent, PodActivityKind, PodActivitySource } from '@podman/shared';
 import { useBeat } from '../livekit/useBeat.js';
+import { testPodVoice } from '../lib/api.js';
 import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
 import LiveWaveform from '@/components/ruixen/live-waveform';
@@ -109,6 +110,7 @@ export function PodView({
 }) {
   const [participants, setParticipants] = useState<PInfo[]>([]);
   const [sharing, setSharing] = useState(false);
+  const [testingVoice, setTestingVoice] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [leftStreamOpen, setLeftStreamOpen] = useState(() =>
@@ -122,6 +124,7 @@ export function PodView({
   const activity = usePodActivity(team.id, me);
 
   const audioRef = useRef<HTMLDivElement>(null);
+  const audioElementsRef = useRef(new Map<string, HTMLElement>());
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const onLeaveRef = useRef(onLeave);
   onLeaveRef.current = onLeave;
@@ -131,12 +134,34 @@ export function PodView({
     const refresh = () => setParticipants(snapshot(room, me));
     refresh();
 
-    const onAudio = (track: RemoteTrack, _pub: RemoteTrackPublication, _p: RemoteParticipant) => {
-      if (track.kind === Track.Kind.Audio && audioRef.current) {
-        audioRef.current.appendChild(track.attach());
-      }
+    const attachAudio = (track: RemoteTrack, pub: RemoteTrackPublication) => {
+      if (track.kind !== Track.Kind.Audio || !audioRef.current) return;
+      const key = pub.trackSid || track.sid || track.mediaStreamTrack.id;
+      if (audioElementsRef.current.has(key)) return;
+      const element = track.attach();
+      element.autoplay = true;
+      audioElementsRef.current.set(key, element);
+      audioRef.current.appendChild(element);
     };
-    const onAudioGone = (track: RemoteTrack) => track.detach().forEach((el) => el.remove());
+    const removeAudio = (track: RemoteTrack, pub?: RemoteTrackPublication) => {
+      const key = pub?.trackSid || track.sid || track.mediaStreamTrack.id;
+      const attached = audioElementsRef.current.get(key);
+      if (attached) {
+        attached.remove();
+        audioElementsRef.current.delete(key);
+      }
+      track.detach().forEach((el) => el.remove());
+    };
+    const attachExistingAudio = () => {
+      room.remoteParticipants.forEach((participant) => {
+        participant.audioTrackPublications.forEach((publication) => {
+          const track = publication.track;
+          if (track) attachAudio(track, publication);
+        });
+      });
+    };
+    const onAudio = (track: RemoteTrack, pub: RemoteTrackPublication) => attachAudio(track, pub);
+    const onAudioGone = (track: RemoteTrack, pub: RemoteTrackPublication) => removeAudio(track, pub);
     const onDisconnected = () => onLeaveRef.current();
     // Browsers block autoplay of incoming audio until a user gesture unlocks it.
     // Surface a button whenever the room can't play sound so PodMan's voice cues
@@ -152,6 +177,7 @@ export function PodView({
       .on(RoomEvent.TrackUnsubscribed, onAudioGone)
       .on(RoomEvent.AudioPlaybackStatusChanged, onPlaybackChanged)
       .on(RoomEvent.Disconnected, onDisconnected);
+    attachExistingAudio();
 
     return () => {
       room
@@ -162,6 +188,8 @@ export function PodView({
         .off(RoomEvent.TrackUnsubscribed, onAudioGone)
         .off(RoomEvent.AudioPlaybackStatusChanged, onPlaybackChanged)
         .off(RoomEvent.Disconnected, onDisconnected);
+      audioElementsRef.current.forEach((el) => el.remove());
+      audioElementsRef.current.clear();
     };
   }, [room, me]);
 
@@ -197,6 +225,22 @@ export function PodView({
       await runBeat();
     } catch (e) {
       setNote(`Audio test failed: ${(e as Error).message}`);
+    }
+  }
+
+  async function playPodManVoiceTest() {
+    if (!room) return;
+    setNote(null);
+    setTestingVoice(true);
+    try {
+      await room.startAudio().catch(() => {});
+      setAudioBlocked(!room.canPlaybackAudio);
+      await testPodVoice(team.id);
+      setNote('PodMan voice test sent.');
+    } catch (e) {
+      setNote(`PodMan voice test failed: ${(e as Error).message}`);
+    } finally {
+      setTestingVoice(false);
     }
   }
 
@@ -316,6 +360,14 @@ export function PodView({
                   <Button variant="outline" onClick={onToggleBeat} disabled={!room}>
                     <Volume2Icon data-icon="inline-start" />
                     {beat.on ? (beat.mine ? 'Stop audio' : `Stop (${beat.by})`) : 'Test audio'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => void playPodManVoiceTest()}
+                    disabled={!room || testingVoice}
+                  >
+                    <RadioTowerIcon data-icon="inline-start" />
+                    {testingVoice ? 'Sending voice' : 'Test PodMan voice'}
                   </Button>
                   <Button onClick={toggleScreen} disabled={!room}>
                     <MonitorUpIcon data-icon="inline-start" />
@@ -516,6 +568,7 @@ export function PodView({
             </main>
             <div
               ref={audioRef}
+              data-testid="livekit-audio-sink"
               className="pointer-events-none fixed size-px overflow-hidden opacity-0"
             />
           </div>

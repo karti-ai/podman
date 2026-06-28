@@ -22,6 +22,7 @@
     "deploy:static:local": "node scripts/deploy-static-local.mjs",
     "hermes:watchdog": "node scripts/hermes-watchdog.mjs",
     "hermes:watchdog:strict": "node scripts/hermes-watchdog.mjs --strict",
+    "hermes:notify": "node scripts/hermes-notify.mjs",
     "hermes:sync-deploy": "node scripts/hermes-sync-deploy.mjs",
     "hermes:install": "node scripts/install-hermes-ops.mjs",
     "healthcheck:public": "node scripts/healthcheck-public.mjs",

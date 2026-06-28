@@ -21,7 +21,14 @@ const { DATA_TOPIC } = await import('../shared/dist/messages.js').catch(() => ({
   DATA_TOPIC: 'podman.intervention',
 }));
 const backendRequire = createRequire(new URL('../backend/package.json', import.meta.url));
-const { Room } = backendRequire('@livekit/rtc-node');
+const {
+  AudioFrame,
+  AudioSource,
+  LocalAudioTrack,
+  Room,
+  TrackPublishOptions,
+  TrackSource,
+} = backendRequire('@livekit/rtc-node');
 const pods = await fetchJson('/api/pods');
 const verifyPod = pods.find((pod) => pod.id === 'frontend-pod') ?? pods[0];
 if (!verifyPod) throw new Error('no pods available for frontend verification');
@@ -121,6 +128,27 @@ async function publishDataMessage(room, message) {
     reliable: true,
     topic: DATA_TOPIC,
   });
+}
+
+async function publishAudioProbe(room) {
+  const source = new AudioSource(24_000, 1, 5_000);
+  const track = LocalAudioTrack.createAudioTrack(`verify-audio-${process.pid}`, source);
+  const options = new TrackPublishOptions();
+  options.source = TrackSource.SOURCE_MICROPHONE;
+  const publication = await room.localParticipant.publishTrack(track, options);
+  await source.captureFrame(new AudioFrame(new Int16Array(24_000), 24_000, 1, 24_000));
+  return { source, publication };
+}
+
+async function waitForAttachedAudio(page) {
+  const audioSink = page.getByTestId('livekit-audio-sink');
+  await audioSink.waitFor({ timeout: 15_000 });
+  for (let i = 0; i < 30; i++) {
+    const count = await audioSink.locator('audio').count();
+    if (count > 0) return;
+    await delay(250);
+  }
+  throw new Error('LiveKit audio track was not attached to the hidden audio sink');
 }
 
 async function waitForInterventionCard(page, room, podId) {
@@ -284,8 +312,8 @@ try {
   const podCard = page
     .getByText(verifyPod.name, { exact: true })
     .locator('xpath=ancestor::*[.//input[@placeholder="Your name"]][1]');
-  await podCard.getByPlaceholder('Your name').fill(verifyMember);
-  await podCard.getByRole('button', { name: 'Add and join' }).click();
+  await podCard.getByPlaceholder('Your name').first().fill(verifyMember);
+  await podCard.getByRole('button', { name: 'Join' }).first().click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
   if (new URL(page.url()).pathname !== `/${verifyPod.id}`) {
     throw new Error(`join did not update URL to /${verifyPod.id}: ${page.url()}`);
@@ -384,6 +412,18 @@ try {
 
   const publisher = await connectPublisher(verifyPod.id);
   try {
+    const audioProbe = await publishAudioProbe(publisher);
+    try {
+      await waitForAttachedAudio(page);
+    } finally {
+      if (audioProbe.publication.sid) {
+        await publisher.localParticipant
+          .unpublishTrack(audioProbe.publication.sid, true)
+          .catch(() => {});
+      }
+      await audioProbe.source.close().catch(() => {});
+    }
+
     const intervention = await waitForInterventionCard(page, publisher, verifyPod.id);
     await publishDataMessage(publisher, {
       type: 'HERMES_MESSAGE',
@@ -432,6 +472,7 @@ try {
         graph: true,
         joined: true,
         screenShare: 'livekit-published',
+        audioSink: 'livekit-attached',
         intervention: 'collision-hermes-voice',
         podId: verifyPod.id,
         member: verifyMember,
