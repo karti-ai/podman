@@ -6,6 +6,7 @@ import {
   VideoStream,
   VideoBufferType,
   dispose,
+  type VideoFrameEvent,
   type RemoteTrack,
   type RemoteTrackPublication,
   type RemoteParticipant,
@@ -45,6 +46,40 @@ async function main() {
   console.log(`[agent] ${HERMES_IDENTITY} joined room ${POD_ROOM}`);
 
   const lastSent = new Map<string, number>();
+  const activeStreams = new Map<string, ReadableStreamDefaultReader<VideoFrameEvent>>();
+
+  const streamKey = (
+    track: RemoteTrack,
+    pub: RemoteTrackPublication,
+    participant: RemoteParticipant,
+  ) => `${participant.identity}:${pub.sid ?? track.sid ?? 'screen'}`;
+
+  const stopStream = async (key: string) => {
+    const reader = activeStreams.get(key);
+    if (!reader) return;
+    activeStreams.delete(key);
+    await reader.cancel().catch(() => {});
+    try {
+      reader.releaseLock();
+    } catch {
+      /* already released */
+    }
+  };
+
+  const processFrame = async (engineerId: string, event: VideoFrameEvent) => {
+    const now = Date.now();
+    if (now - (lastSent.get(engineerId) ?? 0) < SAMPLE_INTERVAL_MS) return;
+    lastSent.set(engineerId, now);
+
+    const rgba = event.frame.convert(VideoBufferType.RGBA);
+    const jpeg = await sharp(Buffer.from(rgba.data), {
+      raw: { width: rgba.width, height: rgba.height, channels: 4 },
+    })
+      .resize({ width: 1280, withoutEnlargement: true })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+    await podman.onScreenFrame(engineerId, jpeg);
+  };
 
   room.on(
     RoomEvent.TrackSubscribed,
@@ -52,26 +87,50 @@ async function main() {
       if (track.kind !== TrackKind.KIND_VIDEO || pub.source !== TrackSource.SOURCE_SCREENSHARE)
         return;
       const id = participant.identity;
+      const key = streamKey(track, pub, participant);
       const stream = new VideoStream(track);
+      void stopStream(key);
+      const reader = stream.getReader();
+      activeStreams.set(key, reader);
       void (async () => {
-        for await (const event of stream) {
-          const now = Date.now();
-          if (now - (lastSent.get(id) ?? 0) < SAMPLE_INTERVAL_MS) continue; // THROTTLE
-          lastSent.set(id, now);
-          const rgba = event.frame.convert(VideoBufferType.RGBA);
-          const jpeg = await sharp(Buffer.from(rgba.data), {
-            raw: { width: rgba.width, height: rgba.height, channels: 4 },
-          })
-            .resize({ width: 1280, withoutEnlargement: true })
-            .jpeg({ quality: 70 })
-            .toBuffer();
-          await podman.onScreenFrame(id, jpeg);
+        try {
+          while (activeStreams.get(key) === reader) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            await processFrame(id, value).catch((err) =>
+              console.error(`[agent] frame sample failed for ${id}: ${(err as Error).message}`),
+            );
+          }
+        } catch (err) {
+          console.error(`[agent] screen stream failed for ${id}: ${(err as Error).message}`);
+        } finally {
+          if (activeStreams.get(key) === reader) activeStreams.delete(key);
+          await reader.cancel().catch(() => {});
+          try {
+            reader.releaseLock();
+          } catch {
+            /* already released */
+          }
         }
       })();
     },
   );
 
+  room.on(
+    RoomEvent.TrackUnsubscribed,
+    (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+      void stopStream(streamKey(track, pub, participant));
+    },
+  );
+
+  room.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+    for (const key of [...activeStreams.keys()]) {
+      if (key.startsWith(`${participant.identity}:`)) void stopStream(key);
+    }
+  });
+
   const shutdown = async () => {
+    await Promise.all([...activeStreams.keys()].map(stopStream));
     await room.disconnect();
     await dispose();
     process.exit(0);

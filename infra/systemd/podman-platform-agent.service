@@ -12,6 +12,9 @@ EnvironmentFile=/root/podman/backend/.env
 ExecStart=/usr/bin/node dist/agent.js
 Restart=always
 RestartSec=3
+MemoryHigh=1536M
+MemoryMax=2G
+OOMPolicy=stop
 KillSignal=SIGTERM
 TimeoutStopSec=20
 

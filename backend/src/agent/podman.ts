@@ -35,7 +35,11 @@ export class PodMan {
           if (c)
             c.hasUnpushedChanges = msg.report.unpushedCount > 0 || msg.report.dirtyFiles.length > 0;
         }
-        if (msg.type === 'ACK') void updateInterventionStatus(msg.interventionId, msg.status);
+        if (msg.type === 'ACK') {
+          void updateInterventionStatus(msg.interventionId, msg.status).catch((err) =>
+            console.error(`[memory] intervention ack failed: ${(err as Error).message}`),
+          );
+        }
       } catch {
         /* ignore malformed */
       }
