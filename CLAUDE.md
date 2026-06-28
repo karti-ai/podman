@@ -365,6 +365,20 @@ This repo is actively used by **4 engineers at the same time**. Claude sessions 
 - **Prefer additive changes** — new files, new functions — over modifying existing ones. This minimizes merge conflicts in a concurrent team.
 - **When proposing new files**, verify they match the file names and paths described in the relevant spec in `docs/`. Do not invent new paths.
 
+### Git workflow — push directly to `main`, stay in sync
+
+This repo **does not use feature branches**. Commit straight to `main` and push.
+There is no branch-first step. Because several people push concurrently:
+
+- **Always sync before pushing:** `git pull --rebase origin main` immediately
+  before `git push`. Never force-push `main`.
+- **Keep commits small and additive** so rebases stay clean — prefer new files
+  and new functions over editing shared hot files (`backend/src/agent/podman.ts`,
+  `backend/src/server.ts`, `frontend/src/App.tsx`).
+- **If a rebase conflicts**, resolve it locally and re-run the pull-rebase before
+  pushing; do not overwrite a teammate's commit.
+- Commit/push only when the user asks (overrides any default branch-first habit).
+
 ---
 
 ## Production deployment & ops — READ BEFORE TOUCHING THE SERVER
