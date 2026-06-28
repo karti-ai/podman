@@ -1,122 +1,183 @@
 # DigitalOcean Deployment Spec
 
-PodMan backend (Hermes) runs on DigitalOcean. Frontend is served as a static site. Both are deployed from the same monorepo.
+PodMan deploys as three App Platform components from the same monorepo:
+
+- `web`: static Vite/React frontend
+- `api`: health-checked HTTP backend on port `8787`
+- `podman-agent`: background LiveKit/Gemini worker with no HTTP health check
+
+This split is intentional. The LiveKit agent subscribes to rooms and samples
+screen-share frames, so it must run as a worker rather than as a web service.
 
 ---
 
-## Services
+## Canonical Spec
 
-### 1. Hermes — Backend API + LiveKit Agent
+Use [`infra/app.yaml`](../infra/app.yaml):
 
-**Type:** DigitalOcean App Platform — Web Service (or Droplet if App Platform has issues)
-
-**Runtime:** Node.js 20
-
-**Build command:** `pnpm --filter backend build`
-
-**Run command:** `node dist/index.js`
-
-**Port:** `8787` (set via `PORT` env var)
-
-**Resources:** Basic ($12/mo) — 1 vCPU, 1GB RAM. Sufficient for hackathon load.
-
----
-
-### 2. Frontend PWA — Static Site
-
-**Type:** DigitalOcean App Platform — Static Site
-
-**Build command:** `pnpm --filter frontend build`
-
-**Output directory:** `frontend/dist`
-
-**Routes:** SPA — all routes → `index.html`
-
----
-
-## Environment variables (set in App Platform dashboard)
-
+```bash
+doctl apps create --spec infra/app.yaml
 ```
-# LiveKit
-LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
-LIVEKIT_API_KEY=
-LIVEKIT_API_SECRET=
 
-# Gemini
-GEMINI_API_KEY=
+The mirror at `infra/.do/app.yaml` is kept identical for DO UI/import workflows.
+
+---
+
+## Components
+
+### Static Site: `web`
+
+- Source: monorepo root
+- Build:
+  `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @podman/shared build && pnpm --filter @podman/frontend build`
+- Output: `frontend/dist`
+- Routes: `/`
+- Build-time env:
+  - `VITE_BACKEND_URL`
+  - `VITE_LIVEKIT_URL`
+  - In the App Platform spec, `VITE_BACKEND_URL=${APP_URL}` keeps frontend API
+    calls on the same deployed origin. If it is omitted, the production frontend
+    also falls back to same-origin.
+
+### HTTP Service: `api`
+
+- Source: monorepo root
+- Dockerfile: `infra/Dockerfile`
+- Runtime selector: `PODMAN_PROCESS=server`
+- Port: `8787`
+- Health check: `/health`
+- Routes:
+  - `/api` with `preserve_path_prefix: true`
+  - `/health`
+
+### Worker: `podman-agent`
+
+- Source: monorepo root
+- Dockerfile: `infra/Dockerfile`
+- Runtime selector: `PODMAN_PROCESS=agent`
+- No HTTP route and no HTTP health check
+- Default room: `POD_ROOM=demo-pod`
+
+---
+
+## Required Runtime Environment
+
+```bash
+LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=...
+LIVEKIT_API_SECRET=...
+
+GEMINI_API_KEY=...
 GEMINI_VISION_MODEL=gemini-2.0-flash
 GEMINI_LIVE_MODEL=gemini-live-2.5-flash
 
-# MongoDB Atlas
+GITHUB_TOKEN=...
+GITHUB_REPO=karti-ai/podman
+
 MONGODB_URI=mongodb+srv://...
+VOYAGE_API_KEY=...
+VOYAGE_EMBEDDING_MODEL=voyage-4-lite
 
-# Server
 PORT=8787
-
-# Frontend (Vite — set in App Platform as static site env vars)
-VITE_BACKEND_URL=https://your-hermes-app.ondigitalocean.app
-VITE_LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
+POD_ROOM=demo-pod
 ```
 
----
-
-## Dockerfile (backend)
-
-Located at `infra/Dockerfile`. Already scaffolded. Ensure it:
-
-1. Uses `node:20-slim`
-2. Installs `pnpm`
-3. Copies workspace root + backend package
-4. Runs `pnpm install --frozen-lockfile`
-5. Runs `pnpm --filter backend build`
-6. `CMD ["node", "backend/dist/index.js"]`
+`VOYAGE_API_KEY` is optional for local/demo fallback. Without it, Mongo exact
+signature recall still works; Atlas Vector Search recall is skipped.
 
 ---
 
-## App Platform spec (`infra/app.yaml`)
+## Container Checks
 
-Already scaffolded. Key fields to confirm before deploy:
-
-```yaml
-services:
-  - name: hermes
-    source_dir: /
-    dockerfile_path: infra/Dockerfile
-    http_port: 8787
-    instance_size_slug: basic-xxs
-    envs:
-      - key: LIVEKIT_URL
-        scope: RUN_TIME
-        value: ${LIVEKIT_URL}
-      # ... other vars
-
-static_sites:
-  - name: frontend
-    source_dir: frontend
-    build_command: pnpm build
-    output_dir: dist
-    index_document: index.html
-    error_document: index.html
-```
-
----
-
-## Deploy checklist
-
-- [ ] MongoDB Atlas IP allowlist: add DigitalOcean outbound IPs (or allow all: `0.0.0.0/0` for hackathon)
-- [ ] LiveKit Cloud: confirm `LIVEKIT_URL` points to your LiveKit Cloud project
-- [ ] Gemini API key has quota for `gemini-2.0-flash` + `gemini-live-2.5-flash`
-- [ ] `VITE_BACKEND_URL` set to the deployed Hermes URL (not localhost)
-- [ ] Test `GET /health` returns `{ ok: true }` after deploy
-
----
-
-## Fallback plan (if App Platform deploy fails on stage)
-
-Run Hermes locally:
+Build once:
 
 ```bash
-cd backend && pnpm dev
+docker build -f infra/Dockerfile -t podman-backend .
 ```
 
-Frontend already points to `http://localhost:8787` by default via `VITE_BACKEND_URL` fallback. Demo works fully local — no DigitalOcean dependency for the live demo itself.
+The image entrypoint runs `node backend/dist/server.js` when
+`PODMAN_PROCESS=server`, and `node backend/dist/agent.js` when
+`PODMAN_PROCESS=agent`. Do not run the combined Hermes supervisor inside App
+Platform; DO already supervises the service and worker separately.
+
+Run the API:
+
+```bash
+docker run --env-file backend/.env -e PODMAN_PROCESS=server -p 8787:8787 podman-backend
+```
+
+Run the worker:
+
+```bash
+docker run --env-file backend/.env -e PODMAN_PROCESS=agent podman-backend
+```
+
+---
+
+## Deploy Checklist
+
+- [ ] `VITE_BACKEND_URL` is `${APP_URL}` or points to the deployed API origin.
+- [ ] `FRONTEND_URL` is set for `pnpm deploy:doctor:strict` if the SPA is on a
+      different origin than the API.
+- [ ] `LIVEKIT_URL` points to the LiveKit Cloud project.
+- [ ] LiveKit API key/secret are set for both `api` and `podman-agent`.
+- [ ] Gemini API key is set for both backend components.
+- [ ] MongoDB Atlas allows DigitalOcean outbound access.
+- [ ] `GET /` returns the built frontend HTML and JavaScript bundle.
+- [ ] `GET /health` returns `{ "ok": true }`.
+- [ ] `GET /api/pods` returns pod data.
+- [ ] Worker logs show `podman-hermes joined room demo-pod`.
+- [ ] `pnpm deploy:doctor:strict` passes with production env loaded.
+
+Run a non-failing readiness report any time:
+
+```bash
+pnpm deploy:doctor
+```
+
+Use the strict gate before calling a deployment production-ready:
+
+```bash
+pnpm deploy:doctor:strict
+```
+
+---
+
+## Local Fallback
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build
+pnpm --filter @podman/backend start:server
+pnpm --filter @podman/backend start:agent
+pnpm --filter @podman/frontend dev
+```
+
+For this droplet deployment, Caddy serves `frontend/dist` from
+`/var/www/podman` and proxies `/api/*` to `localhost:8787`.
+
+The systemd fallback units live in `infra/systemd/` and load
+`/root/podman/backend/.env` on the current droplet:
+
+```bash
+sudo cp infra/systemd/podman-platform-*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now podman-platform-api podman-platform-agent
+```
+
+The droplet production fallback uses systemd units from `infra/systemd/`:
+
+```bash
+sudo install -m 0644 infra/systemd/podman-platform-api.service /etc/systemd/system/
+sudo install -m 0644 infra/systemd/podman-platform-agent.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now podman-platform-api podman-platform-agent
+```
+
+Expected runtime proof:
+
+```bash
+systemctl is-active podman-platform-api podman-platform-agent
+curl http://127.0.0.1:8787/health
+journalctl -u podman-platform-agent -n 20 --no-pager
+```

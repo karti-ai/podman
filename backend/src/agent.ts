@@ -16,11 +16,12 @@ import { env } from './env.js';
 import { PodMan } from './agent/podman.js';
 
 const POD_ROOM = process.env.POD_ROOM ?? 'demo-pod';
+const HERMES_IDENTITY = 'podman-hermes';
 const SAMPLE_INTERVAL_MS = 1000; // ~1 fps to the vision model
 
 async function agentToken(room: string): Promise<string> {
   const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
-    identity: 'podman-agent',
+    identity: HERMES_IDENTITY,
     name: 'PodMan',
     ttl: '4h',
   });
@@ -36,7 +37,7 @@ async function main() {
     dynacast: true,
   });
   await podman.start();
-  console.log(`[agent] PodMan joined room ${POD_ROOM}`);
+  console.log(`[agent] ${HERMES_IDENTITY} joined room ${POD_ROOM}`);
 
   const lastSent = new Map<string, number>();
 

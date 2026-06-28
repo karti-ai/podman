@@ -24,6 +24,13 @@ export async function getDb(): Promise<Db> {
   return client.db();
 }
 
+export async function closeMemory(): Promise<void> {
+  if (!clientPromise) return;
+  const client = await clientPromise;
+  clientPromise = null;
+  await client.close();
+}
+
 export interface PodCollections {
   pods: Collection<Pod>;
   observations: Collection<EngineerContext>;
@@ -88,6 +95,10 @@ export async function initMemory(): Promise<void> {
     ['observations.podId', () => c.observations.createIndex({ podId: 1, observedAt: -1 })],
     ['observations.engineerId', () => c.observations.createIndex({ engineerId: 1 })],
     ['collisions.podId', () => c.collisions.createIndex({ podId: 1, detectedAt: -1 })],
+    [
+      'collisions.memorySignature',
+      () => c.collisions.createIndex({ podId: 1, memorySignature: 1 }),
+    ],
     ['interventions.collisionId', () => c.interventions.createIndex({ collisionId: 1 })],
     ['outcomes.interventionId', () => c.outcomes.createIndex({ interventionId: 1 })],
   ];

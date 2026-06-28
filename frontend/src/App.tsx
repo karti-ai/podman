@@ -9,6 +9,7 @@ import {
   SparklesIcon,
   UsersIcon,
   WifiIcon,
+  ShieldCheckIcon,
 } from 'lucide-react';
 import type { Pod, PodInput } from '@podman/shared';
 import { joinPod } from './lib/pod.js';
@@ -233,34 +234,42 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-5 border-b pb-5">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-10 -mx-4 flex flex-col gap-5 border-b bg-background/86 px-4 pb-5 pt-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid size-10 place-items-center rounded-xl bg-primary text-sm font-medium text-primary-foreground">
+              <div className="grid size-10 place-items-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
                 PM
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-3xl font-semibold tracking-tight">PodMan</h1>
+                  <h1 className="text-[1.95rem] font-semibold leading-none tracking-tight">
+                    PodMan
+                  </h1>
                   <Badge variant={podManOnline ? 'default' : 'secondary'}>
                     <CircleDotIcon data-icon="inline-start" />
                     {podManOnline ? 'online' : 'standby'}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Quiet coordination for live engineering rooms.
+                  Live engineering rooms, team memory, and intervention routing.
                 </p>
               </div>
             </div>
 
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
-              <RefreshCwIcon data-icon="inline-start" />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="h-8 rounded-lg px-3">
+                <ShieldCheckIcon data-icon="inline-start" />
+                Privacy-limited
+              </Badge>
+              <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
+                <RefreshCwIcon data-icon="inline-start" />
+                Refresh
+              </Button>
+            </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <StatPill icon={WifiIcon} label="Live" value={fmt.format(liveTotal)} />
             <StatPill icon={RadioTowerIcon} label="Rooms" value={fmt.format(activeRooms)} />
             <StatPill icon={UsersIcon} label="Roster" value={fmt.format(totalMembers)} />
@@ -292,55 +301,74 @@ export default function App() {
             </CardContent>
           </Card>
         ) : (
-          <main className="flex min-w-0 flex-1 flex-col gap-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <h2 className="text-lg font-medium">Workspaces</h2>
-                <p className="text-sm text-muted-foreground">
-                  Join a room, publish your screen, and let PodMan watch for overlap.
+          <main className="grid min-w-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="flex min-w-0 flex-col gap-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Workspaces</p>
+                  <h2 className="text-xl font-semibold tracking-tight">Active pods</h2>
+                </div>
+                <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+                  Join the room that matches your current workstream.
                 </p>
               </div>
-            </div>
 
-            {loading ? (
-              <div className="grid gap-4 xl:grid-cols-2">
-                <PodSkeleton />
-                <PodSkeleton />
-              </div>
-            ) : pods.length ? (
-              <div className="grid gap-4 xl:grid-cols-2">
-                {pods.map((pod) => (
-                  <PodCard
-                    key={pod.id}
-                    pod={pod}
-                    busy={pending.has(pod.id)}
-                    presence={presence[pod.id] ?? []}
-                    onJoin={handleJoin}
-                    onAddAndJoin={handleAddAndJoin}
-                    onAddMember={handleAddMember}
-                    onRemoveMember={handleRemoveMember}
-                    onUpdate={handleUpdate}
-                    onDelete={handleDelete}
+              {loading ? (
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <PodSkeleton />
+                  <PodSkeleton />
+                </div>
+              ) : pods.length ? (
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {pods.map((pod) => (
+                    <PodCard
+                      key={pod.id}
+                      pod={pod}
+                      busy={pending.has(pod.id)}
+                      presence={presence[pod.id] ?? []}
+                      onJoin={handleJoin}
+                      onAddAndJoin={handleAddAndJoin}
+                      onAddMember={handleAddMember}
+                      onRemoveMember={handleRemoveMember}
+                      onUpdate={handleUpdate}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Empty className="min-h-[360px] rounded-lg border bg-card">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <SparklesIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>No pods yet</EmptyTitle>
+                    <EmptyDescription>Create the first room for this team.</EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} compact />
+                  </EmptyContent>
+                </Empty>
+              )}
+            </section>
+
+            <aside className="flex flex-col gap-4">
+              <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
+              <Card>
+                <CardHeader>
+                  <CardTitle>Operating brief</CardTitle>
+                  <CardDescription>Current coordination signals.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <BriefLine label="Notification default" value="Card" />
+                  <BriefLine label="Escalation" value="Hermes voice only when urgent" />
+                  <BriefLine label="Memory events" value={fmt.format(latestActivity)} />
+                  <BriefLine
+                    label="Live people"
+                    value={liveNames.length ? liveNames.join(', ') : 'None'}
                   />
-                ))}
-                <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
-              </div>
-            ) : (
-              <Empty className="min-h-[360px] border">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <SparklesIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>No pods yet</EmptyTitle>
-                  <EmptyDescription>
-                    Create the first pod to start a LiveKit room and coordination loop.
-                  </EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} compact />
-                </EmptyContent>
-              </Empty>
-            )}
+                </CardContent>
+              </Card>
+            </aside>
           </main>
         )}
       </div>
@@ -358,14 +386,23 @@ function StatPill({
   value: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card px-3 py-2">
-      <div className="grid size-8 place-items-center rounded-lg bg-muted">
+    <div className="flex min-h-16 items-center gap-3 rounded-lg border bg-card/90 px-3 py-2 shadow-sm">
+      <div className="grid size-8 place-items-center rounded-md bg-muted">
         <Icon className="size-4 text-muted-foreground" />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
         <p className="text-base font-medium">{value}</p>
       </div>
+    </div>
+  );
+}
+
+function BriefLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-md bg-muted/45 px-3 py-2">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="max-w-44 text-right text-sm font-medium">{value}</span>
     </div>
   );
 }

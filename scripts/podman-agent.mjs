@@ -30,6 +30,7 @@ async function loadEnv() {
   if (!process.env.MONGODB_URI) {
     try {
       const dotenv = await import('dotenv');
+      dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
       dotenv.config({ path: new URL('../backend/.env', import.meta.url).pathname });
     } catch {
       // dotenv not available — rely on process.env
@@ -37,7 +38,7 @@ async function loadEnv() {
   }
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    console.error('Error: MONGODB_URI not set. Export it or add it to backend/.env');
+    console.error('Error: MONGODB_URI not set. Export it or add it to .env');
     process.exit(1);
   }
   return uri;

@@ -1,0 +1,19 @@
+[Unit]
+Description=PodMan LiveKit/Gemini agent worker
+After=network-online.target mongod.service podman-platform-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/podman/backend
+Environment=NODE_ENV=production
+Environment=POD_ROOM=demo-pod
+EnvironmentFile=/root/podman/backend/.env
+ExecStart=/usr/bin/node dist/agent.js
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -50,10 +50,10 @@ export function CreatePodForm({
   if (!open) {
     return (
       <button
-        className="group flex min-h-64 flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-card p-6 text-center transition hover:bg-muted/30"
+        className="group flex min-h-64 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-card p-6 text-center shadow-sm transition hover:bg-muted/30 hover:ring-1 hover:ring-black/10"
         onClick={() => setOpen(true)}
       >
-        <span className="grid size-9 place-items-center rounded-lg bg-muted transition group-hover:bg-background">
+        <span className="grid size-9 place-items-center rounded-md bg-muted transition group-hover:bg-background">
           <PlusIcon className="size-4 text-muted-foreground" />
         </span>
         <span className="text-sm font-medium">New pod</span>
@@ -68,7 +68,7 @@ export function CreatePodForm({
     <Card className={cn(compact && 'w-full border-0 shadow-none ring-0')}>
       <CardHeader>
         <CardTitle>New pod</CardTitle>
-        <CardDescription>Keep the room name short and specific.</CardDescription>
+        <CardDescription>Create a focused room.</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
@@ -117,7 +117,7 @@ export function CreatePodForm({
             Cancel
           </Button>
         )}
-        <Button onClick={submit} disabled={busy || !name.trim()}>
+        <Button className="min-w-20" onClick={submit} disabled={busy || !name.trim()}>
           Create
         </Button>
       </CardFooter>

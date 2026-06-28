@@ -19,7 +19,7 @@ LiveKit is the real-time backbone for PodMan. It handles room presence and voice
 
 1. PWA calls `POST /pods/:podId/token` → receives `{ token, url }`
 2. LiveKit client connects to the room with the token
-3. PWA publishes screen track via `getDisplayMedia` (used client-side for frame capture — Hermes does NOT subscribe to this track)
+3. PWA publishes screen track via `getDisplayMedia`
 4. PWA sets mic enabled for ambient presence
 
 **Receiving:**
@@ -48,7 +48,7 @@ room.on(RoomEvent.DataReceived, (payload, participant) => {
 **Startup:**
 
 1. Hermes mints its own token via the same `createPodToken` function with `identity: 'podman-hermes'`
-2. Connects to the room on pod creation / first engineer joining
+2. Connects to the configured room as `podman-hermes`
 3. Registers as a LiveKit Agent with Gemini Live 2.5 as voice provider
 
 **Voice delivery:**
@@ -78,7 +78,7 @@ room.localParticipant.publishData(
 
 ## Token endpoint
 
-Already implemented at `POST /pods/:podId/token`.
+Already implemented at `POST /api/token`.
 
 Hermes uses the same endpoint. Grants:
 
@@ -99,7 +99,6 @@ Hermes uses the same endpoint. Grants:
 
 ## What LiveKit does NOT do in PodMan
 
-- Hermes does NOT subscribe to engineer screen tracks (frame capture happens client-side)
 - No video tracks from Hermes
 - No mic transcription (not needed for v1)
 - No SFU mixing — standard room behavior is sufficient

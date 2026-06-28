@@ -1,6 +1,10 @@
 import { Room, RoomEvent } from 'livekit-client';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    ? 'http://localhost:8787'
+    : '');
 
 /** Token + LiveKit URL minted by the backend. */
 export async function fetchPodToken(

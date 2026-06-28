@@ -84,10 +84,12 @@ export function PodCard({
 
   return (
     <>
-      <Card className="min-h-64 transition duration-200 hover:-translate-y-0.5 hover:ring-foreground/15">
+      <Card className="min-h-64 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_6px_rgba(0,0,0,0.06),0_28px_70px_rgba(0,0,0,0.06)] hover:ring-black/15">
         <CardHeader>
-          <CardTitle className="truncate">{pod.name}</CardTitle>
-          <CardDescription className="truncate">{pod.repo || 'No repository set'}</CardDescription>
+          <CardTitle className="truncate text-[1.05rem]">{pod.name}</CardTitle>
+          <CardDescription className="truncate font-mono text-xs">
+            {pod.repo || 'No repository set'}
+          </CardDescription>
           <CardAction>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -121,7 +123,7 @@ export function PodCard({
                   {pod.description || 'Focused workspace for live engineering coordination.'}
                 </p>
               </div>
-              <Badge variant={active ? 'default' : 'secondary'}>
+              <Badge variant={active ? 'default' : 'secondary'} className="rounded-md">
                 {active ? `${presence.length} live` : 'quiet'}
               </Badge>
             </div>
@@ -175,7 +177,11 @@ export function PodCard({
             <VideoIcon data-icon="inline-start" />
             Join
           </Button>
-          <Button onClick={() => submitMember(true)} disabled={busy || !newMember.trim()}>
+          <Button
+            className="min-w-28"
+            onClick={() => submitMember(true)}
+            disabled={busy || !newMember.trim()}
+          >
             Add and join
           </Button>
         </CardFooter>
