@@ -12,7 +12,12 @@ export function shouldIntervene(collision: Collision, prior: RecalledCollision |
   if (collision.severity === 'info') return false;
 
   const priorOutcome = prior?.priorOutcome;
-  if (priorOutcome && !priorOutcome.accepted && !priorOutcome.wasRealCollision) return false;
+  // Suppress when the identical prior was dismissed (accepted === false). The
+  // former `&& !priorOutcome.wasRealCollision` term was dead code: outcomes are
+  // recorded with wasRealCollision hardcoded true, so the gate never fired and
+  // the 85 real dismissals in Atlas were ignored. Dismissals are the negative
+  // signal per continual-learning/policy.md:41 + spec.md:163. (RSI Step 1)
+  if (priorOutcome && !priorOutcome.accepted) return false;
 
   const cooldown = cooldownMs();
   const last = lastNudgeByPod.get(collision.podId) ?? 0;
