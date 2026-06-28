@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "dev:server": "tsx watch src/server.ts",
     "dev:agent": "tsx watch src/agent.ts",
+    "graph:seed": "tsx src/graph/seed.ts",
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"

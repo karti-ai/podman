@@ -6,6 +6,7 @@ import * as api from './lib/api.js';
 import { PodCard } from './components/PodCard.js';
 import { CreatePodForm } from './components/CreatePodForm.js';
 import { PodView } from './components/PodView.js';
+import { GraphView } from './components/GraphView.js';
 
 const SESSION_KEY = 'podman.session';
 
@@ -22,6 +23,7 @@ export default function App() {
   const [devMode, setDevMode] = useState(false);
   const [room, setRoom] = useState<Room | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [graphPodId, setGraphPodId] = useState<string | null>(null);
 
   const joinedPod = joinedPodId ? (pods.find((p) => p.id === joinedPodId) ?? null) : null;
 
@@ -209,19 +211,29 @@ export default function App() {
             Cancel
           </button>
         </div>
+      ) : graphPodId ? (
+        <GraphView podId={graphPodId} onClose={() => setGraphPodId(null)} />
       ) : (
         <main className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-slate-400">
               Pods {loading ? '…' : `(${pods.length})`}
             </h2>
-            <button
-              className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-50"
-              onClick={() => void refresh()}
-              disabled={loading}
-            >
-              ↻ Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                className="text-xs text-slate-400 hover:text-slate-200"
+                onClick={() => setGraphPodId(pods[0]?.id ?? 'demo-pod')}
+              >
+                ◇ Team memory
+              </button>
+              <button
+                className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-50"
+                onClick={() => void refresh()}
+                disabled={loading}
+              >
+                ↻ Refresh
+              </button>
+            </div>
           </div>
 
           {error && (

@@ -18,6 +18,7 @@ import {
   seedDefaultPods,
 } from './pods/store.js';
 import { getPresence } from './livekit/rooms.js';
+import { loadPodGraph, reachFrom } from './graph/store.js';
 import type { InterventionOutcome } from '@podman/shared';
 
 const app = express();
@@ -135,6 +136,23 @@ app.delete('/api/pods/:id/members/:name', async (req, res) => {
   const pod = await removeMember(req.params.id, req.params.name);
   if (!pod) return res.status(404).json({ error: 'pod not found' });
   res.json(pod);
+});
+
+// --- Continual-learning graph (team_model view) ---
+app.get('/api/pods/:id/graph', async (req, res) => {
+  try {
+    res.json(await loadPodGraph(req.params.id));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.get('/api/pods/:id/graph/reach/:node', async (req, res) => {
+  try {
+    res.json(await reachFrom(req.params.id, req.params.node));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 const http = createServer(app);

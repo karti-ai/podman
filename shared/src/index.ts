@@ -9,3 +9,14 @@ export type {
   SuggestedActionKind,
 } from './intervention.js';
 export * from './messages.js';
+export type {
+  PodGraph,
+  PodGraphNode,
+  PodGraphEdge,
+  PodGraphMetric,
+  PodGraphNodeKind,
+  PodGraphEdgeKind,
+  PodGraphNodeStatus,
+  GraphNodeDoc,
+  GraphEdgeDoc,
+} from './graph.js';
