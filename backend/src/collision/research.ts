@@ -24,6 +24,12 @@ function stripGitPrefix(raw: string): string {
   return raw.trim().replace(/^(\?\?|[MADRCU!]{1,2})\s+/, '');
 }
 
+/** Case/whitespace-insensitive identity so vision "Karti" and git "karti" are
+ *  recognized as the same person and never flagged researching-vs-editing self. */
+function canonicalName(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 function fileStem(raw: string): string {
   const base = stripGitPrefix(raw).split(/[\\/]/).pop()?.trim().toLowerCase() ?? '';
   return base.replace(/\.[^.]+$/, '');
@@ -104,7 +110,7 @@ export async function detectResearchOverlaps(
     const researchText = [topic, source].filter(Boolean).join(' ');
 
     for (const editor of editorFiles) {
-      if (editor.engineerId === researcher.engineerId) continue;
+      if (canonicalName(editor.engineerId) === canonicalName(researcher.engineerId)) continue;
 
       const stem = fileStem(editor.file);
       if (!stem) continue;

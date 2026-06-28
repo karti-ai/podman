@@ -19,6 +19,15 @@ function fileKey(raw?: string): string | undefined {
   return base.toLowerCase();
 }
 
+/**
+ * Canonicalize an engineer identity for case/whitespace-insensitive matching.
+ * Vision reports a display name ("Karti") while the git watcher reports a handle
+ * ("karti"); without this the same human collides with themselves.
+ */
+function canonicalName(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 interface Touch {
   engineerId: string;
   unpushed: boolean;
@@ -64,8 +73,15 @@ export function detectCollisions(
 
   const out: Collision[] = [];
   for (const [, touches] of byFile) {
-    const engineers = [...new Set(touches.map((t) => t.engineerId))];
-    if (engineers.length < 2) continue; // need two distinct people on one file
+    // Distinct PEOPLE, case/whitespace-insensitive — one display name per person.
+    // Vision "Karti" and git "karti" are the same human, not a collision.
+    const byPerson = new Map<string, string>(); // canonical id -> display name
+    for (const t of touches) {
+      const id = canonicalName(t.engineerId);
+      if (id && !byPerson.has(id)) byPerson.set(id, t.engineerId);
+    }
+    if (byPerson.size < 2) continue; // need two distinct people on one file
+    const engineers = [...byPerson.values()];
 
     const anyUnpushed = touches.some((t) => t.unpushed) || github.unpushed === true;
     if (!anyUnpushed) continue; // the crux GitHub alone cannot answer
