@@ -87,11 +87,13 @@ export function PodView({
     };
   }, [room, me]);
 
-  // Stop the beat if we leave/unmount.
+  // Stop the beat and any active screen capture on leave/unmount.
   useEffect(() => {
     return () => {
       beatRef.current?.stop();
       beatRef.current = null;
+      screenTrackRef.current?.stop();
+      screenTrackRef.current = null;
     };
   }, []);
 
