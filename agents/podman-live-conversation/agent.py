@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import time
 from typing import Any
 from urllib import error, request
@@ -22,6 +23,29 @@ MODEL = os.getenv("GEMINI_CONVERSATION_MODEL", "gemini-3.1-flash-live-preview")
 VOICE = os.getenv("GEMINI_CONVERSATION_VOICE", "Aoede")
 BACKEND_URL = os.getenv("PODMAN_BACKEND_URL", "http://127.0.0.1:8787").rstrip("/")
 INTERNAL_AGENT_TOKEN = os.getenv("INTERNAL_AGENT_TOKEN", "")
+REPO_SLUG = os.getenv("PODMAN_REPO_SLUG", "karti-ai/podman")
+
+
+def _resolve_repo_root() -> str:
+    override = os.getenv("PODMAN_REPO_ROOT")
+    if override:
+        return override
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        out = subprocess.run(
+            ["git", "-C", here, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:
+        pass
+    return os.path.abspath(os.path.join(here, "..", ".."))
+
+
+REPO_ROOT = _resolve_repo_root()
 
 INSTRUCTIONS = """You are PodMan, a concise real-time engineering teammate.
 You are in a private 1:1 voice conversation with one developer.
@@ -29,6 +53,7 @@ You are in a private 1:1 voice conversation with one developer.
 Use PodMan tools before making claims about current work, git state, collisions, blockers,
 team memory, or recent decisions. Keep spoken answers short. Prefer one useful next step.
 If a critical collision event arrives, stop the current turn and state the alert immediately.
+To find code, files, symbols, or how something is implemented in the repository, call search_repo.
 For complex repository, terminal, GitHub, MongoDB, build, install, deploy, or multi-step tasks,
 call delegate_to_hermes. Do not run those actions directly. If the user says stop, wait, cancel,
 or change of plans while Hermes is running, call abort_active_hermes_job immediately.
@@ -128,6 +153,64 @@ class PodManLiveAgent(Agent):
             if idx >= 0:
                 snippets.append(haystack[max(0, idx - 400) : idx + 1200])
         return "\n---\n".join(snippets)[:8000] or haystack[:6000]
+
+    @function_tool()
+    async def search_repo(self, context: RunContext, query: str, max_results: int = 12) -> str:
+        """Search the team's code repository (github.com/karti-ai/podman) for code, symbols,
+        filenames, config, or any text. Use this to find where something is implemented or which
+        files mention a term before answering questions about the codebase. Searches the live
+        local checkout of the main branch, so results are always current.
+        """
+        cleaned = " ".join(query.split()).strip()
+        if not cleaned:
+            return "Provide a non-empty search query."
+        limit = max(1, min(int(max_results or 12), 40))
+        cmd = [
+            "rg",
+            "--line-number",
+            "--no-heading",
+            "--color",
+            "never",
+            "--smart-case",
+            "--max-count",
+            "3",
+            "--max-columns",
+            "240",
+            "-g",
+            "!*.lock",
+            "-g",
+            "!pnpm-lock.yaml",
+            "-g",
+            "!uv.lock",
+            "-g",
+            "!*.min.*",
+            "--",
+            cleaned,
+            REPO_ROOT,
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+        except asyncio.TimeoutError:
+            return "Repo search timed out. Try a more specific query."
+        except FileNotFoundError:
+            return "Repo search is unavailable on this host (ripgrep is not installed)."
+        if proc.returncode not in (0, 1):  # rg: 0=match, 1=no match, 2=error
+            return f"Repo search failed: {stderr.decode('utf-8', 'replace')[:300]}"
+        prefix = REPO_ROOT + os.sep
+        lines: list[str] = []
+        for line in stdout.decode("utf-8", "replace").splitlines():
+            lines.append(line[len(prefix) :] if line.startswith(prefix) else line)
+            if len(lines) >= limit:
+                break
+        if not lines:
+            return f'No matches for "{cleaned}" in {REPO_SLUG}.'
+        body = "\n".join(lines)
+        return f'Matches for "{cleaned}" in {REPO_SLUG} (path:line):\n{body}'[:7000]
 
     @function_tool()
     async def delegate_to_hermes(
