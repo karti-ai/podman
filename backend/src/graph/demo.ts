@@ -11,21 +11,23 @@ export function createDemoPodGraph(podId: string): PodGraph {
   return {
     podId,
     generatedAt: new Date().toISOString(),
+    // Kept consistent with the graph below (3 owner engineers, 1 collision file,
+    // 1 of 1 interventions accepted) so the numbers never contradict the picture.
     metrics: [
       {
         label: 'Learned owners',
-        value: '5',
-        detail: 'Ownership edges retained from accepted interventions.',
+        value: '3',
+        detail: 'Distinct owners retained from accepted interventions.',
       },
       {
         label: 'Open risk paths',
-        value: '2',
-        detail: 'auth.ts and the memory API have converging editors.',
+        value: '1',
+        detail: 'File with two or more converging editors.',
       },
       {
         label: 'Accept rate',
-        value: '86%',
-        detail: 'Interventions accepted this session (+14%).',
+        value: '100%',
+        detail: 'Interventions accepted vs total this session.',
       },
     ],
     loop: {

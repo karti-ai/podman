@@ -502,6 +502,7 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
 
   const acceptedReal = outcomeDocs.filter((o) => o.accepted && o.wasRealCollision).length;
   const totalOutcomes = outcomeDocs.length;
+  // Raw distinct collision signatures — kept for the learning-loop throughput view.
   const riskPaths = new Set(
     collisionDocs.map(
       (col) =>
@@ -509,21 +510,38 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
         `${normalizeFile(col.file)}#${col.symbol ?? ''}`,
     ),
   ).size;
+
+  // Headline metric cards are derived from the FINAL de-noised graph so they match
+  // what's drawn. Counting raw collision signatures / accepted-outcome rows inflates
+  // them with test churn (e.g. 50 "risk paths" for 4 files), which reads as fake.
+  const finalEdges = [...b.edges.values()];
+  const riskFiles = new Set<string>();
+  for (const e of finalEdges) {
+    if (e.kind === 'touches' && b.nodes.get(e.source)?.kind === 'file') riskFiles.add(e.source);
+  }
+  const openRiskPaths = riskFiles.size || nodes.filter((n) => n.kind === 'collision').length;
+  const ownerSet = new Set<string>();
+  for (const e of finalEdges) {
+    if (e.kind === 'learned_from') ownerSet.add(e.target);
+    if (e.kind === 'owns') ownerSet.add(e.source);
+  }
+  const learnedOwners = [...ownerSet].filter((id) => b.nodes.get(id)?.kind === 'engineer').length;
+
   const metrics: PodGraphMetric[] = [
     {
       label: 'Learned owners',
-      value: String(acceptedReal),
-      detail: 'Ownership retained from accepted interventions.',
+      value: String(learnedOwners),
+      detail: 'Distinct owners retained from accepted interventions.',
     },
     {
       label: 'Open risk paths',
-      value: String(riskPaths),
-      detail: 'Files with two or more converging editors.',
+      value: String(openRiskPaths),
+      detail: `${openRiskPaths === 1 ? 'File' : 'Files'} with two or more converging editors.`,
     },
     {
       label: 'Accept rate',
       value: totalOutcomes ? `${Math.round((acceptedReal / totalOutcomes) * 100)}%` : '—',
-      detail: 'Interventions accepted this session.',
+      detail: 'Interventions accepted vs total this session.',
     },
   ];
   const learnedEdges = [...b.edges.values()].filter((e) => e.kind === 'learned_from').length;

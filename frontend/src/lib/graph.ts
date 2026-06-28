@@ -8,3 +8,8 @@ export async function fetchPodGraph(podId: string): Promise<PodGraph> {
   if (!res.ok) throw new Error(`graph request failed: ${res.status}`);
   return res.json() as Promise<PodGraph>;
 }
+
+/** WebSocket URL for the live event bus — used to nudge the graph to refetch. */
+export function backendEventsUrl(): string {
+  return `${BACKEND_URL.replace(/^http/, 'ws')}/api/events`;
+}
