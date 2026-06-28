@@ -7,14 +7,17 @@ export function useScreenPublish() {
   const [connected, setConnected] = useState(false);
   const [sharing, setSharing] = useState(false);
 
-  const join = useCallback(async (pod: string, identity: string, name: string, githubLogin?: string) => {
-    const { token, url } = await fetchToken({ room: pod, identity, name, githubLogin });
-    const room = new Room({ adaptiveStream: true, dynacast: true });
-    await room.connect(url, token);
-    roomRef.current = room;
-    setConnected(true);
-    return room;
-  }, []);
+  const join = useCallback(
+    async (pod: string, identity: string, name: string, githubLogin?: string) => {
+      const { token, url } = await fetchToken({ room: pod, identity, name, githubLogin });
+      const room = new Room({ adaptiveStream: true, dynacast: true });
+      await room.connect(url, token);
+      roomRef.current = room;
+      setConnected(true);
+      return room;
+    },
+    [],
+  );
 
   const startSharing = useCallback(async () => {
     const room = roomRef.current;

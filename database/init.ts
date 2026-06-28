@@ -26,7 +26,9 @@ async function main() {
           name: 'vector_index',
           type: 'vectorSearch',
           definition: {
-            fields: [{ type: 'vector', path: 'embedding', numDimensions: 1024, similarity: 'cosine' }],
+            fields: [
+              { type: 'vector', path: 'embedding', numDimensions: 1024, similarity: 'cosine' },
+            ],
           },
         },
       ],
@@ -38,4 +40,7 @@ async function main() {
   console.log('PodMan DB initialized.');
   await client.close();
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

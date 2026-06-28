@@ -6,12 +6,12 @@ This is what makes PodMan "more useful the more you use it" — the ownership ma
 
 ## Collections
 
-| Collection | Holds | Notes |
-|---|---|---|
-| `engineer_states` | Latest `EngineerContext` per engineer | Upserted on every `/ingest` call |
-| `ownership_map` | File → primary owner + contributors | Persists across sessions — the continual learning artifact |
-| `events` | Detected coordination events (DEPENDENCY_READY, BLOCKER_DETECTED, DUPLICATE_WORK) | Append-only |
-| `nudges` | Every voice nudge sent to the room | Used for cooldown checks (3 min between nudges) |
+| Collection        | Holds                                                                             | Notes                                                      |
+| ----------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `engineer_states` | Latest `EngineerContext` per engineer                                             | Upserted on every `/ingest` call                           |
+| `ownership_map`   | File → primary owner + contributors                                               | Persists across sessions — the continual learning artifact |
+| `events`          | Detected coordination events (DEPENDENCY_READY, BLOCKER_DETECTED, DUPLICATE_WORK) | Append-only                                                |
+| `nudges`          | Every voice nudge sent to the room                                                | Used for cooldown checks (3 min between nudges)            |
 
 Full schemas with indexes in [`docs/mongodb.md`](../docs/mongodb.md).
 

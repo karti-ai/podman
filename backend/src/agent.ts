@@ -43,7 +43,8 @@ async function main() {
   room.on(
     RoomEvent.TrackSubscribed,
     (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
-      if (track.kind !== TrackKind.KIND_VIDEO || pub.source !== TrackSource.SOURCE_SCREENSHARE) return;
+      if (track.kind !== TrackKind.KIND_VIDEO || pub.source !== TrackSource.SOURCE_SCREENSHARE)
+        return;
       const id = participant.identity;
       const stream = new VideoStream(track);
       void (async () => {

@@ -192,20 +192,11 @@ export default function App() {
       </header>
 
       {joinedPod ? (
-        <PodView
-          team={joinedPod}
-          me={member}
-          room={room}
-          devMode={devMode}
-          onLeave={handleLeave}
-        />
+        <PodView team={joinedPod} me={member} room={room} devMode={devMode} onLeave={handleLeave} />
       ) : showReconnecting ? (
         <div className="flex flex-col items-start gap-3">
           <p className="text-sm text-slate-400">Reconnecting to your pod…</p>
-          <button
-            className="text-xs text-slate-500 hover:text-slate-300"
-            onClick={handleLeave}
-          >
+          <button className="text-xs text-slate-500 hover:text-slate-300" onClick={handleLeave}>
             Cancel
           </button>
         </div>

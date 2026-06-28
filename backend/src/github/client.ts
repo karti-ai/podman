@@ -33,7 +33,12 @@ export async function createSyncPr(input: { headBranch: string; file: string; su
   const { owner, repo } = repoParts();
   const { data: mainRef } = await gh.rest.git.getRef({ owner, repo, ref: 'heads/main' });
   const branch = `podman-sync-${Date.now()}`;
-  await gh.rest.git.createRef({ owner, repo, ref: `refs/heads/${branch}`, sha: mainRef.object.sha });
+  await gh.rest.git.createRef({
+    owner,
+    repo,
+    ref: `refs/heads/${branch}`,
+    sha: mainRef.object.sha,
+  });
   const { data: pr } = await gh.rest.pulls.create({
     owner,
     repo,

@@ -170,9 +170,7 @@ export function PodView({
           onClick={toggleBeat}
           disabled={!room}
           className={`rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${
-            playingBeat
-              ? 'bg-red-600 hover:bg-red-500'
-              : 'bg-emerald-600 hover:bg-emerald-500'
+            playingBeat ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500'
           }`}
         >
           {playingBeat ? '⏹ Stop beat' : '▶ Play beat'}
@@ -185,7 +183,9 @@ export function PodView({
           {sharing ? '🛑 Stop sharing' : '📺 Share my screen'}
         </button>
         <span className="ml-auto text-xs text-slate-400">
-          {playingBeat ? '🔊 broadcasting beat to the pod' : 'press “Play beat” — everyone should hear it'}
+          {playingBeat
+            ? '🔊 broadcasting beat to the pod'
+            : 'press “Play beat” — everyone should hear it'}
         </span>
       </section>
       {note && <p className="text-sm text-amber-400">{note}</p>}

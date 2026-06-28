@@ -46,6 +46,7 @@ PodMan is a real-time AI team coordination agent for software teams. Engineers j
 ## Components
 
 ### PWA (local agent)
+
 - Joins LiveKit room via existing `joinPod` flow
 - Captures frame every 30s via `getDisplayMedia`, compresses to JPEG (1280×720, quality 0.7)
 - POSTs `{ engineerId, podId, screenshotBase64, capturedAt }` to `POST /ingest`
@@ -54,6 +55,7 @@ PodMan is a real-time AI team coordination agent for software teams. Engineers j
 - Two screens: join screen (built), active session screen (to build)
 
 ### Hermes (orchestrator)
+
 - Express server + LiveKit Agent on DigitalOcean
 - `POST /ingest`: receives frame, queues for vision
 - Vision pipeline: Gemini 2.0 Flash → `EngineerContext`
@@ -66,18 +68,21 @@ PodMan is a real-time AI team coordination agent for software teams. Engineers j
 - Cooldown: 3 min between nudges per pod
 
 ### Gemini usage
+
 - **Vision:** `gemini-2.0-flash` — screen → `{ currentFile, inferredTask, terminalVisible, recentTerminalOutput, confidence }`
 - **Event detection:** `gemini-2.0-flash` — all engineer states → `{ event, involvedEngineers, file, reason }`
 - **Nudge generation:** `gemini-2.0-flash` — event → spoken message text
 - **Voice:** `gemini-live-2.5-flash` via LiveKit Agents — text → streaming audio
 
 ### MongoDB Atlas (4 collections)
+
 - `engineer_states`: latest context per engineer, upserted each ingest
 - `ownership_map`: file → primaryOwner + contributors, persists across sessions (continual learning)
 - `events`: all detected coordination events
 - `nudges`: all voice nudges sent + cooldown history
 
 ### LiveKit
+
 - One room per pod
 - Engineers publish screen track (used client-side for capture — Hermes does not subscribe)
 - Hermes joins as `podman-hermes`, publishes audio + data channel messages
@@ -87,17 +92,18 @@ PodMan is a real-time AI team coordination agent for software teams. Engineers j
 
 ## Event types
 
-| Event | Trigger | Example nudge |
-|---|---|---|
+| Event              | Trigger                                                                    | Example nudge                                                                           |
+| ------------------ | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `BLOCKER_DETECTED` | Engineer stuck (error in terminal, same file N frames) + teammate can help | "Carol, looks like you're waiting on auth. Alice is actively building it — hang tight." |
-| `DEPENDENCY_READY` | Engineer A completes work that Engineer B was waiting on | "Carol, Bob — Alice just got the auth endpoint running. You're clear to integrate." |
-| `DUPLICATE_WORK` | 2+ engineers on same file simultaneously | "Alice and Bob — you're both in login.tsx. Coordinate before pushing." |
+| `DEPENDENCY_READY` | Engineer A completes work that Engineer B was waiting on                   | "Carol, Bob — Alice just got the auth endpoint running. You're clear to integrate."     |
+| `DUPLICATE_WORK`   | 2+ engineers on same file simultaneously                                   | "Alice and Bob — you're both in login.tsx. Coordinate before pushing."                  |
 
 ---
 
 ## Continual learning story
 
 The `ownership_map` collection persists across sessions. On Hermes startup:
+
 1. Load ownership map for this pod from Atlas
 2. Build in-memory cache: `Map<file, { primaryOwner, contributors }>`
 3. Event detection uses priors immediately — no ramp-up phase
@@ -120,10 +126,10 @@ The `ownership_map` collection persists across sessions. On Hermes startup:
 
 ## Key risks
 
-| Risk | Mitigation |
-|---|---|
-| Gemini Vision accuracy | Large font, single editor window, confidence gate |
-| Gemini Live 2.5 + LiveKit Agents integration | Build together hour 5–7, have TTS fallback |
-| Frame POST latency | JPEG compression, target < 500ms |
-| Event false positives | 3-min cooldown, pre-staged demo |
-| DO deploy failure | Hermes runs local, PWA defaults to localhost:8787 |
+| Risk                                         | Mitigation                                        |
+| -------------------------------------------- | ------------------------------------------------- |
+| Gemini Vision accuracy                       | Large font, single editor window, confidence gate |
+| Gemini Live 2.5 + LiveKit Agents integration | Build together hour 5–7, have TTS fallback        |
+| Frame POST latency                           | JPEG compression, target < 500ms                  |
+| Event false positives                        | 3-min cooldown, pre-staged demo                   |
+| DO deploy failure                            | Hermes runs local, PWA defaults to localhost:8787 |

@@ -21,8 +21,7 @@ export function detectCollisions(
     const engineers = [...new Set(group.map((g) => g.engineerId))];
     if (engineers.length < 2) continue;
 
-    const anyUnpushed =
-      group.some((g) => g.hasUnpushedChanges) || github.unpushed === true;
+    const anyUnpushed = group.some((g) => g.hasUnpushedChanges) || github.unpushed === true;
     if (!anyUnpushed) continue; // the crux GitHub alone cannot answer
 
     out.push({

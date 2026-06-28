@@ -15,7 +15,9 @@ export function useInterventions(room: Room | null) {
       if (msg.type === 'COLLISION') setActive(msg.intervention);
     };
     room.on(RoomEvent.DataReceived, onData);
-    return () => { room.off(RoomEvent.DataReceived, onData); };
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
   }, [room]);
 
   const respond = useCallback(
