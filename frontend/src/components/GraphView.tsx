@@ -245,7 +245,16 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
                   <g
                     key={n.id}
                     className={`pm-node ${dimNode(n.id) ? 'pm-dim' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${n.kind}: ${n.label}`}
                     onClick={() => setSelected((cur) => (cur === n.id ? null : n.id))}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        setSelected((cur) => (cur === n.id ? null : n.id));
+                      }
+                    }}
                   >
                     <NodeShape node={n} />
                     <text className="pm-lbl" x={n.x} y={n.y + 33} textAnchor="middle">

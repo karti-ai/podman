@@ -70,7 +70,7 @@ export async function reachFrom(podId: string, startNodeId: string): Promise<Rea
   const db = await getDb();
   const rows = await db
     .collection<GraphEdgeDoc>('graph_edges')
-    .aggregate<{ reaches: GraphEdgeDoc[] }>([
+    .aggregate<GraphEdgeDoc & { reaches: GraphEdgeDoc[] }>([
       { $match: { podId, source: startNodeId } },
       {
         $graphLookup: {
@@ -80,9 +80,25 @@ export async function reachFrom(podId: string, startNodeId: string): Promise<Rea
           connectToField: 'source',
           as: 'reaches',
           restrictSearchWithMatch: { podId },
+          maxDepth: 6,
         },
       },
     ])
     .toArray();
-  return { start: startNodeId, reaches: rows.flatMap((r) => r.reaches) };
+
+  // Include the direct outbound edges (the $match rows) plus everything reachable
+  // from them, de-duped by edge id. Without the direct rows, edges straight off
+  // the start node go missing unless a cycle happens to re-discover them.
+  const seen = new Set<string>();
+  const reaches: GraphEdgeDoc[] = [];
+  for (const row of rows) {
+    const { reaches: recursive, ...direct } = row;
+    for (const edge of [direct as GraphEdgeDoc, ...(recursive ?? [])]) {
+      if (edge?.id && !seen.has(edge.id)) {
+        seen.add(edge.id);
+        reaches.push(edge);
+      }
+    }
+  }
+  return { start: startNodeId, reaches };
 }
