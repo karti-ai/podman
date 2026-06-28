@@ -8,6 +8,15 @@ import type {
 import { collections } from './db.js';
 import { enrichCollisionMemory } from './vectors.js';
 
+function comparableFile(raw?: string): string {
+  return (raw ?? '')
+    .trim()
+    .replace(/^(\?\?|[MADRCU!]{1,2})\s+/, '')
+    .split(/[\\/]/)
+    .pop()
+    ?.toLowerCase() ?? '';
+}
+
 /**
  * Continual-learning memory: persist observations, collisions, interventions,
  * and outcomes to MongoDB so later sessions get sharper. MongoDB is mandatory —
@@ -39,6 +48,31 @@ export async function recordIntervention(intervention: Intervention): Promise<vo
   await persist('intervention', async () =>
     (await collections()).interventions.insertOne({ ...intervention }),
   );
+}
+
+export async function hasRecentInterventionForCollision(
+  collision: Collision,
+  windowMs = Number(process.env.NUDGE_COOLDOWN_MS ?? '180000'),
+): Promise<boolean> {
+  if (windowMs <= 0) return false;
+  const c = await collections();
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const recent = await c.collisions
+    .find({ podId: collision.podId, detectedAt: { $gte: since } })
+    .sort({ detectedAt: -1 })
+    .limit(100)
+    .toArray();
+
+  const targetFile = comparableFile(collision.file);
+  for (const match of recent) {
+    if (match.id === collision.id || comparableFile(match.file) !== targetFile) continue;
+    const existing = await c.interventions.findOne({
+      collisionId: match.id,
+      createdAt: { $gte: since },
+    });
+    if (existing) return true;
+  }
+  return false;
 }
 
 export async function updateInterventionStatus(

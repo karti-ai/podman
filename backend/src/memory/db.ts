@@ -57,6 +57,8 @@ export interface GitState {
   gitUpdatedAt: Date | null;
 }
 
+const GIT_STATE_TTL_MS = Number(process.env.GIT_STATE_TTL_MS ?? '120000');
+
 /** Fetch latest git state per engineer for a pod from the engineer_states collection.
  *  Returns a map keyed by engineer name (matches --name arg used in podman-agent.mjs). */
 export async function getGitStates(podId: string): Promise<Map<string, GitState>> {
@@ -71,7 +73,17 @@ export async function getGitStates(podId: string): Promise<Map<string, GitState>
   }>('engineer_states');
   const docs = await col.find({ podId }).toArray();
   const map = new Map<string, GitState>();
+  const now = Date.now();
   for (const doc of docs) {
+    const updatedAt = doc.gitUpdatedAt ? new Date(doc.gitUpdatedAt) : null;
+    if (
+      updatedAt &&
+      !Number.isNaN(updatedAt.getTime()) &&
+      GIT_STATE_TTL_MS > 0 &&
+      now - updatedAt.getTime() > GIT_STATE_TTL_MS
+    ) {
+      continue;
+    }
     map.set(doc.name, {
       changedFiles: doc.changedFiles ?? [],
       branch: doc.branch ?? null,

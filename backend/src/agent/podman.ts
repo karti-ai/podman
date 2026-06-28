@@ -7,6 +7,7 @@ import {
   recordObservation,
   recordCollision,
   recordIntervention,
+  hasRecentInterventionForCollision,
   updateInterventionStatus,
 } from '../memory/store.js';
 import { getGitStates } from '../memory/db.js';
@@ -66,6 +67,7 @@ export class PodMan {
     const prior = await recallSimilar(collision); // Loop A: exact/vector recall raises confidence
     if (prior) collision.severity = 'critical';
     if (!shouldIntervene(collision, prior)) return; // Loop B: policy gate
+    if (await hasRecentInterventionForCollision(collision)) return;
 
     await recordCollision(collision);
     const action = preferredAction(collision, prior);

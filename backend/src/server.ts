@@ -6,7 +6,13 @@ import { WebSocketServer } from 'ws';
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
 import { env } from './env.js';
 import { createSyncPr } from './github/client.js';
-import { recordCollision, recordIntervention, recordOutcome, memoryStats } from './memory/store.js';
+import {
+  recordCollision,
+  recordIntervention,
+  recordOutcome,
+  hasRecentInterventionForCollision,
+  memoryStats,
+} from './memory/store.js';
 import { closeMemory, initMemory } from './memory/db.js';
 import {
   listPods,
@@ -231,6 +237,9 @@ app.post('/api/pods/:id/hermes/notify', async (req, res) => {
       : undefined;
 
   try {
+    if (body.force !== true && (await hasRecentInterventionForCollision(collision))) {
+      return res.status(202).json({ ok: true, collision, intervention, livekit: 'suppressed' });
+    }
     await recordCollision(collision);
     await recordIntervention(intervention);
     if (body.dryRun === true) {

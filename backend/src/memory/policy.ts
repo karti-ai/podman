@@ -16,7 +16,7 @@ export function shouldIntervene(collision: Collision, prior: RecalledCollision |
 
   const cooldown = cooldownMs();
   const last = lastNudgeByPod.get(collision.podId) ?? 0;
-  if (cooldown > 0 && Date.now() - last < cooldown && collision.severity !== 'critical') {
+  if (cooldown > 0 && Date.now() - last < cooldown) {
     return false;
   }
 

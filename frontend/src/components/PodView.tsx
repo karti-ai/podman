@@ -544,8 +544,8 @@ export function PodView({
                   </CardHeader>
                   <CardContent>
                     <LiveWaveform
-                      processing={!!room}
-                      active={beat.on}
+                      processing={!!room || beat.on}
+                      active={false}
                       height={32}
                       barWidth={2}
                       barGap={3}
