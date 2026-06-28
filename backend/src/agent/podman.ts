@@ -43,21 +43,27 @@ export class PodMan {
   }
 
   async onScreenFrame(engineerId: string, jpeg: Buffer): Promise<void> {
-    const ctx = await analyzeFrame(engineerId, this.podId, jpeg);
-    this.contexts.set(engineerId, ctx);
-    await recordObservation(ctx);
+    // Whole-frame guard: a Gemini/GitHub/Mongo failure on one frame must degrade
+    // gracefully, never crash the long-running live agent loop.
+    try {
+      const ctx = await analyzeFrame(engineerId, this.podId, jpeg);
+      this.contexts.set(engineerId, ctx);
+      await recordObservation(ctx);
 
-    // Fuse git ground truth: engineer_states written by scripts/podman-agent.mjs.
-    // Keyed by name (matches --name arg), same as LiveKit participant identity.
-    const gitStates = await getGitStates(this.podId);
-    for (const [id, c] of this.contexts) {
-      const git = gitStates.get(id);
-      if (git && git.changedFiles.length > 0) c.hasUnpushedChanges = true;
+      // Fuse git ground truth: engineer_states written by scripts/podman-agent.mjs.
+      // Keyed by name (matches --name arg), same as LiveKit participant identity.
+      const gitStates = await getGitStates(this.podId);
+      for (const [id, c] of this.contexts) {
+        const git = gitStates.get(id);
+        if (git && git.changedFiles.length > 0) c.hasUnpushedChanges = true;
+      }
+
+      const github = await getGithubState(); // cached
+      const collisions = detectCollisions([...this.contexts.values()], github);
+      for (const collision of collisions) await this.handle(collision);
+    } catch (err) {
+      console.warn(`[agent] frame from ${engineerId} skipped: ${(err as Error).message}`);
     }
-
-    const github = await getGithubState(); // cached
-    const collisions = detectCollisions([...this.contexts.values()], github);
-    for (const collision of collisions) await this.handle(collision);
   }
 
   private async handle(collision: Collision): Promise<void> {
