@@ -1,9 +1,9 @@
 # PodMan — A Pair Programmer for Engineering Teams
 
-[![LiveKit](https://img.shields.io/badge/LiveKit-realtime-000000?logo=livekit&logoColor=white)](https://livekit.io/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-vector%20memory-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Gemini](https://img.shields.io/badge/Gemini-3.x%20Live%20%2B%20Vision%20%2B%20Lyria-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev/)
-[![DigitalOcean](https://img.shields.io/badge/DigitalOcean-deploy-0080FF?logo=digitalocean&logoColor=white)](https://www.digitalocean.com/)
+[LiveKit](https://livekit.io/)
+[MongoDB](https://www.mongodb.com/)
+[Gemini](https://ai.google.dev/)
+[DigitalOcean](https://www.digitalocean.com/)
 
 **2026 AI Engineer World's Fair Hackathon — Theme: Continual Learning**
 
@@ -47,6 +47,8 @@ time.
 
 ---
 
+
+
 ## How it learns
 
 The learning loop is the product, not a side feature. It runs with almost no
@@ -58,30 +60,34 @@ observe → detect → RECALL prior outcomes → policy gate → act → record 
   └──────────────────────────── feeds next recall ───────────────────────────┘
 ```
 
-| Stage | What happens | Code |
-| --- | --- | --- |
-| **Observe** | Gemini Vision turns each screen frame into structured work context (file, symbol, activity, unpushed hints) | `backend/src/vision/gemini.ts` |
-| **Detect** | Same file touched by 2+ engineers with unpushed work → a coordination event | `backend/src/collision/detector.ts` |
-| **Recall (memory)** | Embed the event, query MongoDB Atlas `$vectorSearch` for similar past events, attach their prior intervention + outcome | `backend/src/memory/vectors.ts` |
-| **Policy gate (adapt)** | A dismissed false alarm stays silent; a confirmed real catch escalates to critical; a per-pod cooldown prevents nagging | `backend/src/memory/policy.ts` |
-| **Act (least intrusive)** | Reuse the action kind that was accepted before; default to a card, escalate to a Hermes message, voice only when urgent | `backend/src/action/hermes.ts` |
-| **Record (feedback)** | Accept/dismiss + "was it real?" is written back to memory, closing the loop for next time | `backend/src/memory/store.ts` |
+
+| Stage                     | What happens                                                                                                            | Code                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **Observe**               | Gemini Vision turns each screen frame into structured work context (file, symbol, activity, unpushed hints)             | `backend/src/vision/gemini.ts`      |
+| **Detect**                | Same file touched by 2+ engineers with unpushed work → a coordination event                                             | `backend/src/collision/detector.ts` |
+| **Recall (memory)**       | Embed the event, query MongoDB Atlas `$vectorSearch` for similar past events, attach their prior intervention + outcome | `backend/src/memory/vectors.ts`     |
+| **Policy gate (adapt)**   | A dismissed false alarm stays silent; a confirmed real catch escalates to critical; a per-pod cooldown prevents nagging | `backend/src/memory/policy.ts`      |
+| **Act (least intrusive)** | Reuse the action kind that was accepted before; default to a card, escalate to a Hermes message, voice only when urgent | `backend/src/action/hermes.ts`      |
+| **Record (feedback)**     | Accept/dismiss + "was it real?" is written back to memory, closing the loop for next time                               | `backend/src/memory/store.ts`       |
+
 
 A few things make this real learning rather than a static prompt:
 
 - It adapts from real teammate behavior during a real session, not an offline
-  dataset.
+dataset.
 - It gets more useful as the `outcomes` collection grows — better recall, fewer
-  false alarms.
+false alarms.
 - It needs one tap. No labeling, no config, no retraining.
 - The mechanism is memory: Atlas vector recall plus an outcome-conditioned
-  policy, with an exact-signature fallback when vector search isn't available.
+policy, with an exact-signature fallback when vector search isn't available.
 
 In practice: a false alarm gets dismissed once, and the same pattern stays quiet
 next time. A real conflict gets accepted once, and when it recurs PodMan recalls
 it and escalates straight to a spoken "seen before" cue.
 
 ---
+
+
 
 ## Architecture
 
@@ -138,19 +144,27 @@ flowchart LR
   API --> Mongo
 ```
 
+
+
+
+
 ### Runtime shape
 
-| Layer | Runtime | Responsibility |
-| --- | --- | --- |
-| Frontend PWA | React + Vite | Join pods, publish screen share, render interventions, play audio |
-| Backend API | Express | Mint LiveKit tokens, manage pods, record outcomes, expose memory stats, create sync PRs |
-| Vision agent | `@livekit/rtc-node` | Subscribe to screen-share tracks, sample frames, publish intervention data |
-| Live conversation agent | LiveKit Agents (Python) + Gemini Live API | Real-time voice Q&A with function tools over repo, git, and memory |
-| Perception | Gemini Vision (`gemini-2.0-flash`) | Sampled IDE frames → structured work context |
-| Team memory | MongoDB Atlas | Observations, collisions, interventions, outcomes, vector embeddings |
-| Git watcher | Node script | Report each laptop's dirty/unpushed state as ground truth |
-| Action layer | Hermes | Cards, teammate messages, Gemini TTS urgent voice, Lyria background score |
-| Deployment | DigitalOcean | Static frontend, API service, agent workers |
+
+| Layer                   | Runtime                                   | Responsibility                                                                          |
+| ----------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| Frontend PWA            | React + Vite                              | Join pods, publish screen share, render interventions, play audio                       |
+| Backend API             | Express                                   | Mint LiveKit tokens, manage pods, record outcomes, expose memory stats, create sync PRs |
+| Vision agent            | `@livekit/rtc-node`                       | Subscribe to screen-share tracks, sample frames, publish intervention data              |
+| Live conversation agent | LiveKit Agents (Python) + Gemini Live API | Real-time voice Q&A with function tools over repo, git, and memory                      |
+| Perception              | Gemini Vision (`gemini-2.0-flash`)        | Sampled IDE frames → structured work context                                            |
+| Team memory             | MongoDB Atlas                             | Observations, collisions, interventions, outcomes, vector embeddings                    |
+| Git watcher             | Node script                               | Report each laptop's dirty/unpushed state as ground truth                               |
+| Action layer            | Hermes                                    | Cards, teammate messages, Gemini TTS urgent voice, Lyria background score               |
+| Deployment              | DigitalOcean                              | Static frontend, API service, agent workers                                             |
+
+
+
 
 ### Data flow
 
@@ -181,7 +195,11 @@ sequenceDiagram
   API->>Mongo: Store learning signal
 ```
 
+
+
 ---
+
+
 
 ## Built with
 
@@ -189,13 +207,15 @@ Everything below maps to code in this repo.
 
 **Gemini** does the perception, the voice, and the memory:
 
-| Use | Model | Where |
-| --- | --- | --- |
+
+| Use                                                                         | Model                           | Where                                      |
+| --------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------ |
 | Real-time voice agent (talk to PodMan, answered with repo/git/memory tools) | `gemini-3.1-flash-live-preview` | `agents/podman-live-conversation/agent.py` |
-| Spoken urgent alerts over LiveKit | `gemini-3.1-flash-tts-preview` | `backend/src/voice/live.ts` |
-| Screen understanding → structured work context | `gemini-2.0-flash` | `backend/src/vision/gemini.ts` |
-| Per-pod background music (Interactions API) | `lyria-3-clip-preview` | `backend/src/voice/music.ts` |
-| Embeddings for memory recall | `gemini-embedding-001` | `backend/src/memory/vectors.ts` |
+| Spoken urgent alerts over LiveKit                                           | `gemini-3.1-flash-tts-preview`  | `backend/src/voice/live.ts`                |
+| Screen understanding → structured work context                              | `gemini-2.0-flash`              | `backend/src/vision/gemini.ts`             |
+| Per-pod background music (Interactions API)                                 | `lyria-3-clip-preview`          | `backend/src/voice/music.ts`               |
+| Embeddings for memory recall                                                | `gemini-embedding-001`          | `backend/src/memory/vectors.ts`            |
+
 
 **LiveKit** is the real-time layer: screen-share tracks are the input, a typed
 data channel (`podman.intervention`) carries cards and messages, audio tracks
@@ -212,6 +232,8 @@ fail loudly rather than degrade silently.
 
 ---
 
+
+
 ## How it works
 
 1. Engineers open the PWA and join a pod room.
@@ -219,16 +241,16 @@ fail loudly rather than degrade silently.
 3. The PWA publishes screen share into the room on "Share my screen".
 4. The PodMan vision agent subscribes to the screen-share tracks.
 5. The agent samples frames, sends them to Gemini Vision, records structured
-   observations in MongoDB.
+  observations in MongoDB.
 6. Each engineer runs the git watcher so PodMan has deterministic
-   dirty/unpushed truth.
+  dirty/unpushed truth.
 7. The detector fuses live screen context, git truth, GitHub state, and recalled
-   memory.
+  memory.
 8. The policy gate decides whether and how to act — card, Hermes message, or
-   urgent voice — reusing what worked before.
+  urgent voice — reusing what worked before.
 9. Urgent escalations are spoken via Gemini TTS over a LiveKit audio track.
 10. The teammate's accept/dismiss is saved as an outcome, closing the
-    continual-learning loop.
+  continual-learning loop.
 
 Separately, any teammate can start a **live voice conversation** with PodMan
 (Gemini Live API) to ask about current work, git state, or where something lives
@@ -236,36 +258,46 @@ in the repo — answered with real tool calls, not guesses.
 
 ---
 
+
+
 ## Public interfaces
 
-| Interface | Purpose |
-| --- | --- |
-| `GET /health` | API health check |
-| `POST /api/token` | Mint LiveKit room tokens |
-| `POST /api/sync-pr` | Create a visible sync PR artifact |
-| `POST /api/outcome` | Store accepted/dismissed intervention outcomes |
-| `GET /api/memory/stats` | Memory collection counts (live learning evidence) |
-| `GET/POST/PATCH/DELETE /api/pods` | Pod CRUD |
-| `POST/DELETE /api/pods/:id/members` | Pod membership |
-| LiveKit topic `podman.intervention` | Intervention data channel |
-| Wire messages `COLLISION`, `ACK`, `GIT_REPORT`, `VOICE_CUE` | Agent/PWA contract |
+
+| Interface                                                   | Purpose                                           |
+| ----------------------------------------------------------- | ------------------------------------------------- |
+| `GET /health`                                               | API health check                                  |
+| `POST /api/token`                                           | Mint LiveKit room tokens                          |
+| `POST /api/sync-pr`                                         | Create a visible sync PR artifact                 |
+| `POST /api/outcome`                                         | Store accepted/dismissed intervention outcomes    |
+| `GET /api/memory/stats`                                     | Memory collection counts (live learning evidence) |
+| `GET/POST/PATCH/DELETE /api/pods`                           | Pod CRUD                                          |
+| `POST/DELETE /api/pods/:id/members`                         | Pod membership                                    |
+| LiveKit topic `podman.intervention`                         | Intervention data channel                         |
+| Wire messages `COLLISION`, `ACK`, `GIT_REPORT`, `VOICE_CUE` | Agent/PWA contract                                |
+
 
 ---
+
+
 
 ## Monorepo layout
 
-| Folder | What |
-| --- | --- |
+
+| Folder      | What                                                                       |
+| ----------- | -------------------------------------------------------------------------- |
 | `frontend/` | React + Vite PWA — pods, LiveKit room UI, screen share, intervention cards |
-| `backend/` | Express API plus the LiveKit vision agent worker |
-| `agents/` | Python LiveKit Agents worker for the Gemini Live conversation agent |
-| `shared/` | Shared TypeScript types and LiveKit data message contracts |
-| `database/` | MongoDB setup and seed utilities |
-| `infra/` | DigitalOcean specs, Caddyfile, systemd units |
-| `scripts/` | Local git watcher + deploy/verify tooling |
-| `docs/` | Integration specs and the demo script |
+| `backend/`  | Express API plus the LiveKit vision agent worker                           |
+| `agents/`   | Python LiveKit Agents worker for the Gemini Live conversation agent        |
+| `shared/`   | Shared TypeScript types and LiveKit data message contracts                 |
+| `database/` | MongoDB setup and seed utilities                                           |
+| `infra/`    | DigitalOcean specs, Caddyfile, systemd units                               |
+| `scripts/`  | Local git watcher + deploy/verify tooling                                  |
+| `docs/`     | Integration specs and the demo script                                      |
+
 
 ---
+
+
 
 ## Quick start
 
@@ -282,6 +314,8 @@ pnpm --filter @podman/frontend dev      # PWA on :5173
 The live conversation agent (Gemini Live API) runs from `agents/podman-live-conversation/`.
 
 ---
+
+
 
 ## Git watcher — run on every demo laptop
 
