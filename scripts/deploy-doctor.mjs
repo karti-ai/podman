@@ -353,11 +353,10 @@ await check('gemini embeddings', checkGeminiEmbeddings);
 
 if (isSet('VOYAGE_API_KEY')) {
   await check('voyage embeddings', checkVoyage);
-  await check('atlas vector index', checkVectorIndex);
 } else {
-  add('voyage embeddings', 'warn', 'VOYAGE_API_KEY is optional; exact Mongo recall remains active');
-  add('atlas vector index', 'warn', 'requires VOYAGE_API_KEY and Atlas Search index');
+  add('voyage embeddings', 'warn', 'VOYAGE_API_KEY is optional; Gemini embeddings are active');
 }
+await check('atlas vector index', checkVectorIndex);
 
 const failed = results.filter((r) => r.status === 'fail');
 const warnings = results.filter((r) => r.status === 'warn');
