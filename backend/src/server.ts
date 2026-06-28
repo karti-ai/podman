@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomConfiguration } from 'livekit-server-sdk';
 import { env } from './env.js';
 import { createSyncPr } from './github/client.js';
 import { recordOutcome, memoryStats } from './memory/store.js';
@@ -17,7 +17,7 @@ import {
   removeMember,
   seedDefaultPods,
 } from './pods/store.js';
-import { getPresence } from './livekit/rooms.js';
+import { getPresence, closeRoom } from './livekit/rooms.js';
 import { loadPodGraph, reachFrom } from './graph/store.js';
 import type { InterventionOutcome } from '@podman/shared';
 
@@ -37,6 +37,9 @@ app.post('/api/token', async (req, res) => {
     metadata: JSON.stringify({ githubLogin: githubLogin ?? name }),
   });
   at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true });
+  // Auto-clean the room: close 60s after it empties, drop a participant 20s
+  // after they disconnect. Applied when LiveKit auto-creates the room.
+  at.roomConfig = new RoomConfiguration({ name: room, emptyTimeout: 60, departureTimeout: 20 });
   res.json({ token: await at.toJwt(), url: env.LIVEKIT_URL });
 });
 
@@ -119,6 +122,7 @@ app.patch('/api/pods/:id', async (req, res) => {
 app.delete('/api/pods/:id', async (req, res) => {
   const ok = await deletePod(req.params.id);
   if (!ok) return res.status(404).json({ error: 'pod not found' });
+  await closeRoom(req.params.id); // end the live LiveKit room too (kicks anyone connected)
   res.json({ ok: true });
 });
 

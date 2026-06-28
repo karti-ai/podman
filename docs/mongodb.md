@@ -63,6 +63,7 @@ Tracks who works on which files. Built up over the session. **Persists across se
 **Index:** `{ podId: 1, file: 1 }` (unique)
 
 **Upsert logic:**
+
 - On each context update where `currentFile` is non-null:
   - Increment `observationCount`
   - Update `primaryOwner` to the engineer with the most recent `lastSeenAt` on this file

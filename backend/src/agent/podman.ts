@@ -26,9 +26,12 @@ export class PodMan {
         const msg = JSON.parse(new TextDecoder().decode(payload)) as DataMessage;
         if (msg.type === 'GIT_REPORT') {
           const c = this.contexts.get(msg.report.engineerId);
-          if (c) c.hasUnpushedChanges = msg.report.unpushedCount > 0 || msg.report.dirtyFiles.length > 0;
+          if (c)
+            c.hasUnpushedChanges = msg.report.unpushedCount > 0 || msg.report.dirtyFiles.length > 0;
         }
-      } catch { /* ignore malformed */ }
+      } catch {
+        /* ignore malformed */
+      }
     });
   }
 
@@ -58,7 +61,8 @@ export class PodMan {
     await recordCollision(collision);
     const action = preferredAction(collision, prior);
     const names = collision.engineers.join(' and ');
-    const message = `${names} are both editing ${collision.file}` +
+    const message =
+      `${names} are both editing ${collision.file}` +
       (collision.githubState?.unpushed ? ' and one has unpushed changes.' : '.') +
       (prior ? ` I've seen this conflict pattern before.` : '');
 
@@ -75,10 +79,10 @@ export class PodMan {
     await recordIntervention(intervention);
 
     const data: DataMessage = { type: 'COLLISION', collision, intervention };
-    await this.room.localParticipant?.publishData(
-      this.encoder.encode(JSON.stringify(data)),
-      { reliable: true, topic: DATA_TOPIC },
-    );
+    await this.room.localParticipant?.publishData(this.encoder.encode(JSON.stringify(data)), {
+      reliable: true,
+      topic: DATA_TOPIC,
+    });
     await speak(this.room, message); // gemini-3.1-flash-live voice into the room
   }
 }

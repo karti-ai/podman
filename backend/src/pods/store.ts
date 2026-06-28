@@ -39,7 +39,8 @@ function cleanMembers(members: unknown): string[] {
   for (const raw of members) {
     if (typeof raw !== 'string') throw new Error('member names must be strings');
     const name = raw.trim();
-    if (name.length > MAX_MEMBER_LEN) throw new Error(`member name too long (max ${MAX_MEMBER_LEN})`);
+    if (name.length > MAX_MEMBER_LEN)
+      throw new Error(`member name too long (max ${MAX_MEMBER_LEN})`);
     const key = name.toLowerCase();
     if (name && !seen.has(key)) {
       seen.add(key);

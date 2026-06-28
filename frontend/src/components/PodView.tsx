@@ -1,9 +1,43 @@
 import { useEffect, useRef, useState } from 'react';
 import { RoomEvent, Track } from 'livekit-client';
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  CircleDotIcon,
+  MonitorUpIcon,
+  RadioTowerIcon,
+  SparklesIcon,
+  Volume2Icon,
+  XIcon,
+} from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import type { Pod } from '@podman/shared';
-import { Avatar } from './Avatar.js';
 import { startBeat, type BeatHandle } from '../lib/beat.js';
+import { useInterventions } from '../livekit/useInterventions.js';
+import LiveWaveform from '@/components/ruixen/live-waveform';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Avatar, AvatarBadge, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty';
+import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 interface PInfo {
   id: string;
@@ -46,12 +80,14 @@ export function PodView({
   const [sharing, setSharing] = useState(false);
   const [playingBeat, setPlayingBeat] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const { active, respond } = useInterventions(room);
 
   const audioRef = useRef<HTMLDivElement>(null);
   const beatRef = useRef<BeatHandle | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const onLeaveRef = useRef(onLeave);
+  onLeaveRef.current = onLeave;
 
-  // Subscribe to live room state: participants, active speakers, remote audio.
   useEffect(() => {
     if (!room) return;
     const refresh = () => setParticipants(snapshot(room, me));
@@ -63,13 +99,15 @@ export function PodView({
       }
     };
     const onAudioGone = (track: RemoteTrack) => track.detach().forEach((el) => el.remove());
+    const onDisconnected = () => onLeaveRef.current();
 
     room
       .on(RoomEvent.ParticipantConnected, refresh)
       .on(RoomEvent.ParticipantDisconnected, refresh)
       .on(RoomEvent.ActiveSpeakersChanged, refresh)
       .on(RoomEvent.TrackSubscribed, onAudio)
-      .on(RoomEvent.TrackUnsubscribed, onAudioGone);
+      .on(RoomEvent.TrackUnsubscribed, onAudioGone)
+      .on(RoomEvent.Disconnected, onDisconnected);
 
     return () => {
       room
@@ -77,15 +115,17 @@ export function PodView({
         .off(RoomEvent.ParticipantDisconnected, refresh)
         .off(RoomEvent.ActiveSpeakersChanged, refresh)
         .off(RoomEvent.TrackSubscribed, onAudio)
-        .off(RoomEvent.TrackUnsubscribed, onAudioGone);
+        .off(RoomEvent.TrackUnsubscribed, onAudioGone)
+        .off(RoomEvent.Disconnected, onDisconnected);
     };
   }, [room, me]);
 
-  // Stop the beat if we leave/unmount.
   useEffect(() => {
     return () => {
       beatRef.current?.stop();
       beatRef.current = null;
+      screenTrackRef.current?.stop();
+      screenTrackRef.current = null;
     };
   }, []);
 
@@ -106,7 +146,7 @@ export function PodView({
         setPlayingBeat(true);
       }
     } catch (e) {
-      setNote(`beat failed: ${(e as Error).message}`);
+      setNote(`Audio test failed: ${(e as Error).message}`);
     }
   }
 
@@ -123,7 +163,7 @@ export function PodView({
         return;
       }
       if (!window.isSecureContext || !navigator.mediaDevices?.getDisplayMedia) {
-        setNote('screen capture needs HTTPS (secure context)');
+        setNote('Screen capture needs HTTPS.');
         return;
       }
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -137,117 +177,239 @@ export function PodView({
       screenTrackRef.current = track;
       setSharing(true);
     } catch (e) {
-      setNote(`screen share cancelled: ${(e as Error).message}`);
+      setNote(`Screen share stopped: ${(e as Error).message}`);
     }
   }
 
-  const liveCount = participants.length;
+  const podmanPresent = participants.some((p) => p.name.toLowerCase() === 'podman');
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-slate-100">{team.name}</h2>
-          <p className="text-xs text-slate-500">{team.repo}</p>
-        </div>
-        <button
-          onClick={onLeave}
-          className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
-        >
-          Leave
-        </button>
-      </header>
-
-      {devMode && (
-        <p className="rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
-          DEV MODE — LiveKit not configured, so this is a local-only mock (no real room).
-        </p>
-      )}
-
-      {/* Connectivity test controls */}
-      <section className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-        <button
-          onClick={toggleBeat}
-          disabled={!room}
-          className={`rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${
-            playingBeat
-              ? 'bg-red-600 hover:bg-red-500'
-              : 'bg-emerald-600 hover:bg-emerald-500'
-          }`}
-        >
-          {playingBeat ? '⏹ Stop beat' : '▶ Play beat'}
-        </button>
-        <button
-          onClick={toggleScreen}
-          disabled={!room}
-          className="rounded-md border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
-        >
-          {sharing ? '🛑 Stop sharing' : '📺 Share my screen'}
-        </button>
-        <span className="ml-auto text-xs text-slate-400">
-          {playingBeat ? '🔊 broadcasting beat to the pod' : 'press “Play beat” — everyone should hear it'}
-        </span>
-      </section>
-      {note && <p className="text-sm text-amber-400">{note}</p>}
-
-      <div className="grid gap-6 md:grid-cols-[1fr_300px]">
-        {/* Live participants */}
-        <section>
-          <h3 className="mb-3 text-sm font-medium text-slate-400">In the room now ({liveCount})</h3>
-          {liveCount === 0 ? (
-            <p className="text-sm text-slate-500">Connecting…</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {participants.map((p) => (
-                <div
-                  key={p.id}
-                  className={`flex items-center gap-3 rounded-lg border p-3 transition ${
-                    p.speaking
-                      ? 'border-emerald-400 bg-emerald-950/30 ring-1 ring-emerald-400/50'
-                      : 'border-slate-800 bg-slate-900/40'
-                  }`}
-                >
-                  <Avatar name={p.name} size={36} ring={p.isLocal} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-200">{p.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {p.isLocal ? 'you' : 'connected'}
-                      {p.speaking ? ' · 🔊' : ''}
-                    </p>
-                  </div>
-                </div>
-              ))}
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+        <header className="flex items-center justify-between gap-4 border-b pb-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={onLeave}>
+                  <ArrowLeftIcon />
+                  <span className="sr-only">Leave pod</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Leave pod</TooltipContent>
+            </Tooltip>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-xl font-semibold tracking-tight">{team.name}</h1>
+                <Badge variant={room ? 'default' : 'secondary'}>{room ? 'live' : 'local'}</Badge>
+              </div>
+              <p className="truncate text-sm text-muted-foreground">{team.repo}</p>
             </div>
-          )}
-          <p className="mt-3 text-xs text-slate-600">
-            Pod roster: {team.members.join(', ') || '—'}
-          </p>
-        </section>
+          </div>
 
-        {/* PodMan panel */}
-        <aside className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🛰️</span>
-            <h3 className="font-semibold text-slate-100">PodMan</h3>
-            <span className="ml-auto flex items-center gap-1 text-xs text-emerald-400">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" /> watching
-            </span>
+            <Button variant="outline" onClick={toggleBeat} disabled={!room}>
+              <Volume2Icon data-icon="inline-start" />
+              {playingBeat ? 'Stop audio' : 'Test audio'}
+            </Button>
+            <Button onClick={toggleScreen} disabled={!room}>
+              <MonitorUpIcon data-icon="inline-start" />
+              {sharing ? 'Stop sharing' : 'Share screen'}
+            </Button>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
-            {liveCount} participant{liveCount === 1 ? '' : 's'} connected. Watching for collisions
-            before push.
-          </p>
-          <div className="mt-4 border-t border-slate-800 pt-4">
-            <h4 className="mb-2 text-xs font-medium text-slate-400">Interventions</h4>
-            <div className="rounded-lg border border-dashed border-slate-800 px-3 py-6 text-center text-xs text-slate-600">
-              No collisions detected.
-            </div>
-          </div>
-        </aside>
-      </div>
+        </header>
 
-      {/* hidden sink for remote audio elements */}
-      <div ref={audioRef} className="hidden" />
+        {devMode && (
+          <Alert>
+            <RadioTowerIcon />
+            <AlertTitle>Local mode</AlertTitle>
+            <AlertDescription>LiveKit is not configured for this session.</AlertDescription>
+          </Alert>
+        )}
+
+        {note && (
+          <Alert>
+            <CircleDotIcon />
+            <AlertTitle>Room notice</AlertTitle>
+            <AlertDescription>{note}</AlertDescription>
+          </Alert>
+        )}
+
+        <main className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="flex min-w-0 flex-col gap-5">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Metric label="Participants" value={participants.length || 1} />
+              <Metric label="Screen" value={sharing ? 'sharing' : 'idle'} />
+              <Metric label="PodMan" value={podmanPresent ? 'online' : 'waiting'} />
+            </div>
+
+            <Card className="flex-1">
+              <CardHeader>
+                <CardTitle>Room</CardTitle>
+                <CardDescription>Only the signals that matter right now.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {participants.length === 0 ? (
+                  <Empty className="min-h-80">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <RadioTowerIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>Connecting</EmptyTitle>
+                      <EmptyDescription>Waiting for LiveKit room state.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                ) : (
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {participants.map((p) => (
+                      <Participant key={p.id} participant={p} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter>
+                <p className="truncate text-sm text-muted-foreground">
+                  Roster: {team.members.join(', ') || 'No saved members'}
+                </p>
+              </CardFooter>
+            </Card>
+          </section>
+
+          <aside className="flex flex-col gap-5">
+            <Card>
+              <CardHeader>
+                <CardTitle>Intervention</CardTitle>
+                <CardDescription>PodMan stays quiet until the signal is useful.</CardDescription>
+                <CardAction>
+                  <Badge variant={active ? 'default' : 'secondary'}>
+                    {active ? 'active' : 'clear'}
+                  </Badge>
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                {active ? (
+                  <div className="flex flex-col gap-4">
+                    <div className="rounded-xl border bg-muted/30 p-3">
+                      <p className="text-sm leading-6">{active.message}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-muted-foreground">Suggested action</span>
+                      <Badge variant="outline">
+                        {active.suggestedAction.kind.replaceAll('_', ' ')}
+                      </Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <Empty className="min-h-72 border-0 p-0">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <SparklesIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>No collision detected</EmptyTitle>
+                      <EmptyDescription>
+                        Share your screen when ready. The agent will surface only meaningful
+                        overlap.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )}
+              </CardContent>
+              {active && (
+                <CardFooter className="justify-end gap-2">
+                  <Button variant="outline" onClick={() => void respond('dismissed', false)}>
+                    <XIcon data-icon="inline-start" />
+                    Dismiss
+                  </Button>
+                  <Button onClick={() => void respond('accepted', true)}>
+                    <CheckIcon data-icon="inline-start" />
+                    Accept
+                  </Button>
+                </CardFooter>
+              )}
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Status</CardTitle>
+                <CardDescription>Connection, media, and agent presence.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <LiveWaveform
+                  processing={!!room}
+                  active={false}
+                  height={32}
+                  barWidth={2}
+                  barGap={3}
+                  className="mb-4 px-3 py-2 text-muted-foreground"
+                />
+                <div className="flex flex-col gap-3">
+                  <StatusLine label="LiveKit" value={room ? 'connected' : 'offline'} />
+                  <StatusLine label="Screen" value={sharing ? 'published' : 'not shared'} />
+                  <StatusLine label="Audio" value={playingBeat ? 'publishing' : 'ready'} />
+                  <StatusLine label="Agent" value={podmanPresent ? 'watching' : 'waiting'} />
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
+        </main>
+        <div ref={audioRef} className="hidden" />
+      </div>
     </div>
   );
+}
+
+function Metric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <Card size="sm">
+      <CardContent>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="mt-1 text-lg font-medium">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Participant({ participant }: { participant: PInfo }) {
+  return (
+    <div
+      className={cn(
+        'flex min-h-16 items-center justify-between gap-3 rounded-xl border bg-muted/20 px-3 transition',
+        participant.speaking && 'bg-muted',
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <Avatar>
+          <AvatarFallback>{initials(participant.name)}</AvatarFallback>
+          {participant.speaking && <AvatarBadge />}
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{participant.name}</p>
+          <p className="text-xs text-muted-foreground">{participant.isLocal ? 'you' : 'remote'}</p>
+        </div>
+      </div>
+      <Badge variant={participant.speaking ? 'default' : 'secondary'}>
+        {participant.speaking ? 'speaking' : 'connected'}
+      </Badge>
+    </div>
+  );
+}
+
+function StatusLine({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="text-sm font-medium">{value}</span>
+      </div>
+      <Separator />
+    </>
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }

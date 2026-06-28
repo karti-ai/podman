@@ -16,17 +16,20 @@ LiveKit is the real-time backbone for PodMan. It handles room presence and voice
 ## Engineer side (PWA)
 
 **Joining:**
+
 1. PWA calls `POST /pods/:podId/token` → receives `{ token, url }`
 2. LiveKit client connects to the room with the token
 3. PWA publishes screen track via `getDisplayMedia` (used client-side for frame capture — Hermes does NOT subscribe to this track)
 4. PWA sets mic enabled for ambient presence
 
 **Receiving:**
+
 - LiveKit client automatically receives Hermes audio track
 - No special subscription needed — LiveKit delivers audio to all participants
 - PWA also listens for data channel messages from Hermes for UI card updates
 
 **Data channel listener (PWA):**
+
 ```ts
 room.on(RoomEvent.DataReceived, (payload, participant) => {
   if (participant?.identity !== 'podman-hermes') return;
@@ -43,17 +46,20 @@ room.on(RoomEvent.DataReceived, (payload, participant) => {
 **Framework:** LiveKit Agents (Node.js)
 
 **Startup:**
+
 1. Hermes mints its own token via the same `createPodToken` function with `identity: 'podman-hermes'`
 2. Connects to the room on pod creation / first engineer joining
 3. Registers as a LiveKit Agent with Gemini Live 2.5 as voice provider
 
 **Voice delivery:**
+
 1. Nudge message text is ready (from Gemini text generation)
 2. Hermes passes text to Gemini Live 2.5 via LiveKit Agents voice pipeline
 3. Audio streams into the room in real-time
 4. All participants hear it
 
 **Data channel message (sent alongside audio):**
+
 ```ts
 const nudge = {
   type: 'DEPENDENCY_READY' | 'BLOCKER_DETECTED' | 'DUPLICATE_WORK',
@@ -75,6 +81,7 @@ room.localParticipant.publishData(
 Already implemented at `POST /pods/:podId/token`.
 
 Hermes uses the same endpoint. Grants:
+
 - `roomJoin: true`
 - `canPublish: true` (for audio track)
 - `canPublishData: true` (for data channel)

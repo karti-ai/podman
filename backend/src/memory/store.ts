@@ -15,11 +15,15 @@ async function persist(name: string, fn: () => Promise<unknown>): Promise<void> 
 }
 
 export async function recordObservation(ctx: EngineerContext): Promise<void> {
-  await persist('observation', async () => (await collections()).observations.insertOne({ ...ctx }));
+  await persist('observation', async () =>
+    (await collections()).observations.insertOne({ ...ctx }),
+  );
 }
 
 export async function recordCollision(collision: Collision): Promise<void> {
-  await persist('collision', async () => (await collections()).collisions.insertOne({ ...collision }));
+  await persist('collision', async () =>
+    (await collections()).collisions.insertOne({ ...collision }),
+  );
 }
 
 export async function recordIntervention(intervention: Intervention): Promise<void> {

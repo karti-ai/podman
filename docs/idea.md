@@ -86,8 +86,8 @@ Each engineer opens a browser PWA on their laptop. The PWA captures a screen fra
 
 ## Prize alignment
 
-| Prize | How PodMan earns it |
-|---|---|
-| Best Gemini 3.5 / 2.5 | Gemini Vision for screen understanding + Gemini Live 2.5 for voice output |
-| Best LiveKit | LiveKit is the real-time backbone for room presence and voice delivery — load-bearing, not decorative |
-| Best DigitalOcean | Hermes deployed on DigitalOcean App Platform; MongoDB Atlas on DO-adjacent infrastructure |
+| Prize                 | How PodMan earns it                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------- |
+| Best Gemini 3.5 / 2.5 | Gemini Vision for screen understanding + Gemini Live 2.5 for voice output                             |
+| Best LiveKit          | LiveKit is the real-time backbone for room presence and voice delivery — load-bearing, not decorative |
+| Best DigitalOcean     | Hermes deployed on DigitalOcean App Platform; MongoDB Atlas on DO-adjacent infrastructure             |

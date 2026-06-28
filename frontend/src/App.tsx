@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { Room } from 'livekit-client';
+import {
+  AlertCircleIcon,
+  BrainCircuitIcon,
+  CircleDotIcon,
+  RadioTowerIcon,
+  RefreshCwIcon,
+  SparklesIcon,
+  UsersIcon,
+  WifiIcon,
+} from 'lucide-react';
 import type { Pod, PodInput } from '@podman/shared';
 import { joinPod } from './lib/pod.js';
 import * as api from './lib/api.js';
@@ -7,8 +17,29 @@ import { PodCard } from './components/PodCard.js';
 import { CreatePodForm } from './components/CreatePodForm.js';
 import { PodView } from './components/PodView.js';
 import { GraphView } from './components/GraphView.js';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const SESSION_KEY = 'podman.session';
+const fmt = new Intl.NumberFormat('en', { notation: 'compact' });
 
 export default function App() {
   const [pods, setPods] = useState<Pod[]>([]);
@@ -16,8 +47,7 @@ export default function App() {
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [presence, setPresence] = useState<Record<string, string[]>>({});
-
-  // join state — keep the id and derive the pod so it never goes stale
+  const [memory, setMemory] = useState<api.MemoryStats | null>(null);
   const [joinedPodId, setJoinedPodId] = useState<string | null>(null);
   const [member, setMember] = useState('');
   const [devMode, setDevMode] = useState(false);
@@ -30,7 +60,14 @@ export default function App() {
   async function refresh() {
     setLoading(true);
     try {
-      setPods(await api.listPods());
+      const [nextPods, nextPresence, nextMemory] = await Promise.all([
+        api.listPods(),
+        api.getPresence().catch(() => presence),
+        api.getMemoryStats().catch(() => memory),
+      ]);
+      setPods(nextPods);
+      setPresence(nextPresence);
+      setMemory(nextMemory);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -47,10 +84,8 @@ export default function App() {
       return n;
     });
 
-  // Connect to a pod's LiveKit room and persist the session for refresh-resume.
   async function connectToPod(podId: string, who: string) {
-    const identity = `${who}-${Math.random().toString(36).slice(2, 7)}`;
-    const result = await joinPod(podId, identity, who);
+    const result = await joinPod(podId, who, who);
     setRoom(result.room);
     setDevMode(result.mode === 'dev');
     setMember(who);
@@ -62,15 +97,19 @@ export default function App() {
     void refresh();
   }, []);
 
-  // Poll live presence while browsing the pod list (not while joined — PodView
-  // tracks the room live itself).
   useEffect(() => {
     if (joinedPodId) return;
     let alive = true;
     const tick = async () => {
       try {
-        const p = await api.getPresence();
-        if (alive) setPresence(p);
+        const [p, m] = await Promise.all([
+          api.getPresence(),
+          api.getMemoryStats().catch(() => memory),
+        ]);
+        if (alive) {
+          setPresence(p);
+          setMemory(m);
+        }
       } catch {
         /* presence is best-effort */
       }
@@ -83,7 +122,6 @@ export default function App() {
     };
   }, [joinedPodId]);
 
-  // Resume a joined session across a page refresh (auto-reconnect, no re-prompt).
   useEffect(() => {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) return;
@@ -158,7 +196,6 @@ export default function App() {
     }
   }
 
-  // Add your name to the roster (if new) and join in one step.
   async function handleAddAndJoin(pod: Pod, name: string) {
     startPending(pod.id);
     setError(null);
@@ -177,94 +214,187 @@ export default function App() {
     setRoom(null);
     setJoinedPodId(null);
     sessionStorage.removeItem(SESSION_KEY);
+    void refresh();
   }
 
   const showReconnecting = restoring || (joinedPodId !== null && joinedPod === null);
+  const liveNames = Array.from(new Set(Object.values(presence).flat()));
+  const liveTotal = liveNames.length;
+  const totalMembers = pods.reduce((sum, p) => sum + p.members.length, 0);
+  const activeRooms = Object.values(presence).filter((names) => names.length > 0).length;
+  const podManOnline = liveNames.some((name) => name.toLowerCase() === 'podman');
+  const latestActivity = memory
+    ? memory.observations + memory.collisions + memory.interventions + memory.outcomes
+    : 0;
+
+  if (joinedPod) {
+    return (
+      <PodView team={joinedPod} me={member} room={room} devMode={devMode} onLeave={handleLeave} />
+    );
+  }
+
+  if (graphPodId) {
+    return <GraphView podId={graphPodId} onClose={() => setGraphPodId(null)} />;
+  }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-5xl px-4 py-8 sm:px-6">
-      <header className="mb-8 flex items-center gap-3">
-        <span className="text-3xl">🛰️</span>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-100">PodMan</h1>
-          <p className="text-sm text-slate-400">
-            The teammate that sees what git can&apos;t — collisions caught before you push.
-          </p>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-5 border-b pb-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid size-10 place-items-center rounded-xl bg-primary text-sm font-medium text-primary-foreground">
+                PM
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-3xl font-semibold tracking-tight">PodMan</h1>
+                  <Badge variant={podManOnline ? 'default' : 'secondary'}>
+                    <CircleDotIcon data-icon="inline-start" />
+                    {podManOnline ? 'online' : 'standby'}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Quiet coordination for live engineering rooms.
+                </p>
+              </div>
+            </div>
 
-      {joinedPod ? (
-        <PodView
-          team={joinedPod}
-          me={member}
-          room={room}
-          devMode={devMode}
-          onLeave={handleLeave}
-        />
-      ) : showReconnecting ? (
-        <div className="flex flex-col items-start gap-3">
-          <p className="text-sm text-slate-400">Reconnecting to your pod…</p>
-          <button
-            className="text-xs text-slate-500 hover:text-slate-300"
-            onClick={handleLeave}
-          >
-            Cancel
-          </button>
-        </div>
-      ) : graphPodId ? (
-        <GraphView podId={graphPodId} onClose={() => setGraphPodId(null)} />
-      ) : (
-        <main className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-slate-400">
-              Pods {loading ? '…' : `(${pods.length})`}
-            </h2>
-            <div className="flex items-center gap-3">
-              <button
-                className="text-xs text-slate-400 hover:text-slate-200"
-                onClick={() => setGraphPodId(pods[0]?.id ?? 'demo-pod')}
-              >
-                ◇ Team memory
-              </button>
-              <button
-                className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-50"
-                onClick={() => void refresh()}
-                disabled={loading}
-              >
-                ↻ Refresh
-              </button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setGraphPodId(pods[0]?.id ?? 'demo-pod')}>
+                <BrainCircuitIcon data-icon="inline-start" />
+                Team memory
+              </Button>
+              <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
+                <RefreshCwIcon data-icon="inline-start" />
+                Refresh
+              </Button>
             </div>
           </div>
 
-          {error && (
-            <p className="rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
-          )}
+          <div className="grid gap-2 sm:grid-cols-4">
+            <StatPill icon={WifiIcon} label="Live" value={fmt.format(liveTotal)} />
+            <StatPill icon={RadioTowerIcon} label="Rooms" value={fmt.format(activeRooms)} />
+            <StatPill icon={UsersIcon} label="Roster" value={fmt.format(totalMembers)} />
+            <StatPill icon={BrainCircuitIcon} label="Memory" value={fmt.format(latestActivity)} />
+          </div>
+        </header>
 
-          {loading ? (
-            <p className="text-sm text-slate-500">Loading pods…</p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {pods.map((pod) => (
-                <PodCard
-                  key={pod.id}
-                  pod={pod}
-                  busy={pending.has(pod.id)}
-                  presence={presence[pod.id] ?? []}
-                  onJoin={handleJoin}
-                  onAddAndJoin={handleAddAndJoin}
-                  onAddMember={handleAddMember}
-                  onRemoveMember={handleRemoveMember}
-                  onUpdate={handleUpdate}
-                  onDelete={handleDelete}
-                />
-              ))}
-              <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircleIcon />
+            <AlertTitle>PodMan could not complete that action</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {showReconnecting ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Reconnecting to your pod</CardTitle>
+              <CardDescription>Restoring the saved LiveKit session.</CardDescription>
+              <CardAction>
+                <Button variant="outline" size="sm" onClick={handleLeave}>
+                  Cancel
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-2 w-full" />
+            </CardContent>
+          </Card>
+        ) : (
+          <main className="flex min-w-0 flex-1 flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="text-lg font-medium">Workspaces</h2>
+                <p className="text-sm text-muted-foreground">
+                  Join a room, publish your screen, and let PodMan watch for overlap.
+                </p>
+              </div>
             </div>
-          )}
-        </main>
-      )}
+
+            {loading ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <PodSkeleton />
+                <PodSkeleton />
+              </div>
+            ) : pods.length ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {pods.map((pod) => (
+                  <PodCard
+                    key={pod.id}
+                    pod={pod}
+                    busy={pending.has(pod.id)}
+                    presence={presence[pod.id] ?? []}
+                    onJoin={handleJoin}
+                    onAddAndJoin={handleAddAndJoin}
+                    onAddMember={handleAddMember}
+                    onRemoveMember={handleRemoveMember}
+                    onUpdate={handleUpdate}
+                    onDelete={handleDelete}
+                  />
+                ))}
+                <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
+              </div>
+            ) : (
+              <Empty className="min-h-[360px] border">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <SparklesIcon />
+                  </EmptyMedia>
+                  <EmptyTitle>No pods yet</EmptyTitle>
+                  <EmptyDescription>
+                    Create the first pod to start a LiveKit room and coordination loop.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} compact />
+                </EmptyContent>
+              </Empty>
+            )}
+          </main>
+        )}
+      </div>
     </div>
+  );
+}
+
+function StatPill({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border bg-card px-3 py-2">
+      <div className="grid size-8 place-items-center rounded-lg bg-muted">
+        <Icon className="size-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-base font-medium">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function PodSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-4 w-56" />
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }

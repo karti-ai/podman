@@ -104,6 +104,7 @@ Respond with the message text only.
 ```
 
 **Example output:**
+
 > "Carol — Alice just got the auth endpoint running. You're clear to integrate."
 
 ---
@@ -115,6 +116,7 @@ Respond with the message text only.
 **Integration:** LiveKit Agents framework — Hermes runs as a LiveKit Agent with Gemini Live 2.5 as the voice provider
 
 **Flow:**
+
 1. Nudge message text generated (step 3)
 2. Hermes passes text to Gemini Live via LiveKit Agents
 3. Gemini Live streams audio back in real-time
@@ -122,6 +124,7 @@ Respond with the message text only.
 5. All participants hear it through their audio output
 
 **Why Gemini Live (not plain TTS):**
+
 - Streams audio directly — no intermediate WAV file conversion
 - Latency ~300–500ms from text to first audio packet
 - Natural-sounding voice
