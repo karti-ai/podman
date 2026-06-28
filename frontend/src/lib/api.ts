@@ -1,4 +1,4 @@
-import type { InterventionOutcome, Pod, PodInput } from '@podman/shared';
+import type { InterventionOutcome, Pod, PodActivityEvent, PodInput } from '@podman/shared';
 
 const BACKEND_URL =
   import.meta.env.VITE_BACKEND_URL ||
@@ -73,6 +73,16 @@ export async function getPresence(): Promise<Record<string, string[]>> {
 
 export async function getMemoryStats(): Promise<MemoryStats> {
   return json(await fetch(`${BACKEND_URL}/api/memory/stats`));
+}
+
+export async function getPodActivity(id: string, limit = 80): Promise<PodActivityEvent[]> {
+  return json(
+    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/activity?limit=${limit}`),
+  );
+}
+
+export function podActivityStreamUrl(id: string): string {
+  return `${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/activity/stream`;
 }
 
 export async function createPod(input: PodInput): Promise<Pod> {

@@ -22,6 +22,9 @@ const { DATA_TOPIC } = await import('../shared/dist/messages.js').catch(() => ({
 }));
 const backendRequire = createRequire(new URL('../backend/package.json', import.meta.url));
 const { Room } = backendRequire('@livekit/rtc-node');
+const pods = await fetchJson('/api/pods');
+const verifyPod = pods.find((pod) => pod.id === 'frontend-pod') ?? pods[0];
+if (!verifyPod) throw new Error('no pods available for frontend verification');
 
 async function stopChild(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -89,7 +92,7 @@ async function publishIntervention(room, podId) {
     podId,
     kind: 'card',
     message: 'Verification collision: two engineers are editing frontend/src/App.tsx.',
-    suggestedAction: { kind: 'sync_before_push' },
+    suggestedAction: { kind: 'open_sync_pr' },
     status: 'pending',
     createdAt: now,
   };
@@ -227,7 +230,9 @@ page.on('console', (msg) => {
 });
 page.on('pageerror', (err) => pageErrors.push(err.message));
 page.on('requestfailed', (req) => {
-  failedRequests.push(`${req.url()} ${req.failure()?.errorText ?? ''}`.trim());
+  const failure = req.failure()?.errorText ?? '';
+  if (req.url().includes('/activity/stream') && failure.includes('ERR_ABORTED')) return;
+  failedRequests.push(`${req.url()} ${failure}`.trim());
 });
 
 try {
@@ -235,8 +240,7 @@ try {
   await page.waitForTimeout(500);
 
   const bodyText = await page.locator('body').innerText();
-  const hasPodCards =
-    (await page.locator('text=/Frontend Pod|Backend Pod|graph pod/i').count()) > 0;
+  const hasPodCards = (await page.getByText(verifyPod.name, { exact: true }).count()) > 0;
   const hasOverlay = (await page.locator('vite-error-overlay, .vite-error-overlay').count()) > 0;
 
   if (bodyText.length < 100) throw new Error('frontend rendered too little text');
@@ -252,12 +256,14 @@ try {
   await page.getByRole('button', { name: 'Whole graph' }).click();
   await page.getByRole('button', { name: /Pods/i }).click();
 
-  const frontendPodCard = page
-    .getByText('Frontend Pod', { exact: true })
+  const podCard = page
+    .getByText(verifyPod.name, { exact: true })
     .locator('xpath=ancestor::*[.//input[@placeholder="Your name"]][1]');
-  await frontendPodCard.getByPlaceholder('Your name').fill(verifyMember);
-  await frontendPodCard.getByRole('button', { name: 'Add and join' }).click();
+  await podCard.getByPlaceholder('Your name').fill(verifyMember);
+  await podCard.getByRole('button', { name: 'Add and join' }).click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
+  await page.getByText('My stream').waitFor({ timeout: 15_000 });
+  await page.getByText('Team stream').waitFor({ timeout: 15_000 });
 
   const joinedText = await page.locator('body').innerText();
   const hasPodView =
@@ -272,18 +278,18 @@ try {
   await page.getByRole('button', { name: 'Share screen' }).click();
   await page.getByRole('button', { name: 'Stop sharing' }).waitFor({ timeout: 15_000 });
   await page.getByText(/Screen\s*published/i).waitFor({ timeout: 15_000 });
-  await waitForPublishedScreenShare('frontend-pod');
+  await waitForPublishedScreenShare(verifyPod.id);
   await page.getByRole('button', { name: 'Stop sharing' }).click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
 
-  const publisher = await connectPublisher('frontend-pod');
+  const publisher = await connectPublisher(verifyPod.id);
   try {
-    const intervention = await waitForInterventionCard(page, publisher, 'frontend-pod');
+    const intervention = await waitForInterventionCard(page, publisher, verifyPod.id);
     await publishDataMessage(publisher, {
       type: 'HERMES_MESSAGE',
       message: {
         id: `hermes-${process.pid}`,
-        podId: 'frontend-pod',
+        podId: verifyPod.id,
         interventionId: intervention.id,
         recipients: ['Verify'],
         text: 'Hermes verification message routed to the team.',
@@ -326,6 +332,7 @@ try {
         joined: true,
         screenShare: 'livekit-published',
         intervention: 'collision-hermes-voice',
+        podId: verifyPod.id,
         member: verifyMember,
       },
       null,
@@ -333,7 +340,7 @@ try {
     ),
   );
 } finally {
-  await doFetch(`${apiBase}/api/pods/frontend-pod/members/${encodeURIComponent(verifyMember)}`, {
+  await doFetch(`${apiBase}/api/pods/${verifyPod.id}/members/${encodeURIComponent(verifyMember)}`, {
     method: 'DELETE',
   }).catch(() => {});
   await browser.close();

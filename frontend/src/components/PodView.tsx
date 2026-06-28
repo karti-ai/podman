@@ -4,18 +4,22 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   CircleDotIcon,
+  GitBranchIcon,
   ExternalLinkIcon,
+  FileTextIcon,
   MessageSquareIcon,
   MonitorUpIcon,
   RadioTowerIcon,
   SparklesIcon,
+  TriangleAlertIcon,
   Volume2Icon,
   XIcon,
 } from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
-import type { Pod } from '@podman/shared';
+import type { Pod, PodActivityEvent, PodActivityKind } from '@podman/shared';
 import { startBeat, type BeatHandle } from '../lib/beat.js';
 import { useInterventions } from '../livekit/useInterventions.js';
+import { usePodActivity } from '../hooks/use-pod-activity.js';
 import LiveWaveform from '@/components/ruixen/live-waveform';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarBadge, AvatarFallback } from '@/components/ui/avatar';
@@ -83,6 +87,7 @@ export function PodView({
   const [playingBeat, setPlayingBeat] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const { active, hermes, voiceCue, actionUrl, respond } = useInterventions(room);
+  const activity = usePodActivity(team.id, me);
 
   const audioRef = useRef<HTMLDivElement>(null);
   const beatRef = useRef<BeatHandle | null>(null);
@@ -285,6 +290,26 @@ export function PodView({
                 </p>
               </CardFooter>
             </Card>
+
+            <section className="grid min-h-[420px] gap-5 xl:grid-cols-2">
+              <ActivityStream
+                title="My stream"
+                description={`${me}'s live screen, git, intervention, and conflict log.`}
+                events={activity.mine}
+                connected={activity.connected}
+                emptyTitle="No personal signal yet"
+                emptyDescription="Start the local git watcher or share your IDE screen to populate this lane."
+              />
+              <ActivityStream
+                title="Team stream"
+                description="Everyone else in this pod, merged into one realtime feed."
+                events={activity.team}
+                connected={activity.connected}
+                emptyTitle="No teammate signal yet"
+                emptyDescription="Waiting for other members' screen, git, or collision events."
+              />
+            </section>
+            {activity.error && <p className="text-xs text-muted-foreground">{activity.error}</p>}
           </section>
 
           <aside className="flex flex-col gap-5">
@@ -448,6 +473,145 @@ function StatusLine({ label, value }: { label: string; value: string }) {
       <Separator />
     </>
   );
+}
+
+function ActivityStream({
+  title,
+  description,
+  events,
+  connected,
+  emptyTitle,
+  emptyDescription,
+}: {
+  title: string;
+  description: string;
+  events: PodActivityEvent[];
+  connected: boolean;
+  emptyTitle: string;
+  emptyDescription: string;
+}) {
+  return (
+    <Card className="min-h-0">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+        <CardAction>
+          <Badge variant={connected ? 'default' : 'secondary'} className="rounded-md">
+            {connected ? 'streaming' : 'syncing'}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {events.length ? (
+          <div className="max-h-[460px] overflow-y-auto pr-1">
+            <div className="flex flex-col gap-2">
+              {events.map((event) => (
+                <ActivityItem key={event.id} event={event} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <Empty className="min-h-72 border-0 p-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <RadioTowerIcon />
+              </EmptyMedia>
+              <EmptyTitle>{emptyTitle}</EmptyTitle>
+              <EmptyDescription>{emptyDescription}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActivityItem({ event }: { event: PodActivityEvent }) {
+  const Icon = activityIcon(event.kind);
+  return (
+    <div
+      className={cn(
+        'grid min-h-20 grid-cols-[2.25rem_minmax(0,1fr)] gap-3 rounded-lg border bg-card px-3 py-3 shadow-sm',
+        event.severity === 'critical' && 'border-destructive/45 bg-destructive/5',
+        event.severity === 'warn' && 'border-chart-3/45 bg-chart-3/5',
+      )}
+    >
+      <div
+        className={cn(
+          'flex size-9 items-center justify-center rounded-md border bg-muted text-muted-foreground',
+          event.severity === 'critical' && 'border-destructive/35 text-destructive',
+          event.severity === 'success' && 'border-chart-2/35 text-chart-2',
+        )}
+      >
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <p className="min-w-0 truncate text-sm font-medium">{event.title}</p>
+          <time className="shrink-0 text-xs text-muted-foreground">{timeLabel(event.at)}</time>
+        </div>
+        {event.detail && (
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {event.detail}
+          </p>
+        )}
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+          {event.actors?.length ? (
+            event.actors.map((actor) => (
+              <Badge
+                key={actor}
+                variant="secondary"
+                className="rounded-md px-1.5 py-0 text-[0.68rem]"
+              >
+                {actor}
+              </Badge>
+            ))
+          ) : event.actor ? (
+            <Badge variant="secondary" className="rounded-md px-1.5 py-0 text-[0.68rem]">
+              {event.actor}
+            </Badge>
+          ) : null}
+          <Badge variant="outline" className="rounded-md px-1.5 py-0 text-[0.68rem]">
+            {event.source}
+          </Badge>
+          {event.file && (
+            <Badge variant="outline" className="max-w-full rounded-md px-1.5 py-0 text-[0.68rem]">
+              <span className="truncate">{event.file}</span>
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function activityIcon(kind: PodActivityKind) {
+  switch (kind) {
+    case 'git':
+      return GitBranchIcon;
+    case 'collision':
+      return TriangleAlertIcon;
+    case 'intervention':
+      return MessageSquareIcon;
+    case 'outcome':
+      return CheckIcon;
+    case 'observation':
+    default:
+      return FileTextIcon;
+  }
+}
+
+function timeLabel(value: string): string {
+  const then = Date.parse(value);
+  if (!Number.isFinite(then)) return '--';
+  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (seconds < 10) return 'now';
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 function initials(name: string): string {

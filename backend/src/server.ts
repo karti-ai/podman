@@ -19,6 +19,7 @@ import {
 } from './pods/store.js';
 import { getPresence, closeRoom } from './livekit/rooms.js';
 import { loadPodGraph, reachFrom } from './graph/store.js';
+import { listPodActivity } from './activity/store.js';
 import type { InterventionOutcome } from '@podman/shared';
 
 const app = express();
@@ -157,6 +158,51 @@ app.get('/api/pods/:id/graph/reach/:node', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
+});
+
+app.get('/api/pods/:id/activity', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit ?? 80) || 80, 200);
+    res.json(await listPodActivity(req.params.id, limit));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.get('/api/pods/:id/activity/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  let closed = false;
+  let lastPayload = '';
+
+  const send = async () => {
+    if (closed) return;
+    try {
+      const events = await listPodActivity(req.params.id, 80);
+      const payload = JSON.stringify(events);
+      if (payload !== lastPayload) {
+        lastPayload = payload;
+        res.write(`event: snapshot\n`);
+        res.write(`data: ${payload}\n\n`);
+      } else {
+        res.write(`: keepalive ${Date.now()}\n\n`);
+      }
+    } catch (e) {
+      res.write(`event: error\n`);
+      res.write(`data: ${JSON.stringify({ error: (e as Error).message })}\n\n`);
+    }
+  };
+
+  await send();
+  const interval = setInterval(() => void send(), 1500);
+
+  req.on('close', () => {
+    closed = true;
+    clearInterval(interval);
+  });
 });
 
 const http = createServer(app);

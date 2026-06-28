@@ -1,5 +1,11 @@
 export type { Pod, PodInput, Engineer } from './pod.js';
 export type { EngineerContext } from './engineer.js';
+export type {
+  PodActivityEvent,
+  PodActivityKind,
+  PodActivitySeverity,
+  PodActivitySource,
+} from './activity.js';
 export type { Collision, CollisionSeverity, GithubStateSnapshot } from './collision.js';
 export type {
   Intervention,
