@@ -1,0 +1,11 @@
+[Unit]
+Description=PodMan public URL healthcheck
+After=network-online.target mongod.service podman-platform-api.service podman-platform-agent.service caddy.service
+Wants=network-online.target mongod.service podman-platform-api.service podman-platform-agent.service caddy.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/podman
+Environment=PODMAN_PUBLIC_URL=https://165-22-129-249.sslip.io/
+Environment=PODMAN_HEALTH_TIMEOUT_MS=8000
+ExecStart=/usr/bin/node scripts/healthcheck-public.mjs

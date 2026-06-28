@@ -20,6 +20,7 @@
     "doctor": "node scripts/deploy-doctor.mjs",
     "doctor:strict": "node scripts/deploy-doctor.mjs --strict",
     "deploy:static:local": "node scripts/deploy-static-local.mjs",
+    "healthcheck:public": "node scripts/healthcheck-public.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm verify:backend && pnpm verify:frontend",
     "verify:full": "pnpm verify && pnpm build:container && pnpm verify:containers",
     "verify:backend": "node scripts/verify-backend.mjs",

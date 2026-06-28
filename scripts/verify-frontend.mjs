@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { TextEncoder } from 'node:util';
 import { chromium } from 'playwright';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -7,6 +9,16 @@ const frontendUrl = process.env.FRONTEND_URL ?? 'http://127.0.0.1:4173/';
 const shouldStartPreview = !process.env.FRONTEND_URL;
 const doFetch = globalThis.fetch;
 const verifyMember = `Verify ${process.pid}`;
+const apiBase = process.env.BACKEND_URL
+  ? process.env.BACKEND_URL.replace(/\/$/, '')
+  : process.env.FRONTEND_URL
+    ? new URL(process.env.FRONTEND_URL).origin
+    : 'http://localhost:8787';
+const { DATA_TOPIC } = await import('../shared/dist/messages.js').catch(() => ({
+  DATA_TOPIC: 'podman.intervention',
+}));
+const backendRequire = createRequire(new URL('../backend/package.json', import.meta.url));
+const { Room } = backendRequire('@livekit/rtc-node');
 
 async function stopChild(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -40,6 +52,61 @@ async function waitForPreview() {
     await delay(200);
   }
   throw new Error(`frontend preview did not become ready at ${frontendUrl}`);
+}
+
+async function fetchJson(path, init) {
+  const res = await doFetch(`${apiBase}${path}`, init);
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!res.ok) throw new Error(`${path} returned ${res.status}: ${text}`);
+  return body;
+}
+
+async function connectPublisher(roomName) {
+  const { token, url } = await fetchJson('/api/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      room: roomName,
+      identity: `verify-agent-${process.pid}`,
+      name: 'PodMan',
+    }),
+  });
+  const room = new Room();
+  await room.connect(url, token);
+  return room;
+}
+
+async function publishIntervention(room, podId) {
+  const now = new Date().toISOString();
+  const id = `verify-${process.pid}-${Date.now()}`;
+  const intervention = {
+    id: `int-${id}`,
+    collisionId: `col-${id}`,
+    podId,
+    kind: 'card',
+    message: 'Verification collision: two engineers are editing frontend/src/App.tsx.',
+    suggestedAction: { kind: 'sync_before_push' },
+    status: 'pending',
+    createdAt: now,
+  };
+  const message = {
+    type: 'COLLISION',
+    collision: {
+      id: intervention.collisionId,
+      podId,
+      file: 'src/App.tsx',
+      engineers: ['Verify', 'PodMan'],
+      severity: 'warn',
+      githubState: { branch: 'verify', unpushed: true, prs: [] },
+      detectedAt: now,
+    },
+    intervention,
+  };
+  await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(message)), {
+    reliable: true,
+    topic: DATA_TOPIC,
+  });
 }
 
 let preview = null;
@@ -99,6 +166,21 @@ try {
   if (!hasPodView) {
     throw new Error(`pod detail controls did not render after join: ${joinedText.slice(0, 500)}`);
   }
+
+  const publisher = await connectPublisher('frontend-pod');
+  try {
+    await publishIntervention(publisher, 'frontend-pod');
+    await page
+      .getByText('Verification collision: two engineers are editing frontend/src/App.tsx.')
+      .waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Dismiss' }).click();
+    await page.getByText('No collision detected').waitFor({ timeout: 15_000 });
+  } finally {
+    await publisher.disconnect();
+  }
+
+  await page.getByRole('button', { name: 'Leave pod' }).click();
+
   if (consoleErrors.length) throw new Error(`console errors: ${consoleErrors.join(' | ')}`);
   if (pageErrors.length) throw new Error(`page errors: ${pageErrors.join(' | ')}`);
   if (failedRequests.length) throw new Error(`failed requests: ${failedRequests.join(' | ')}`);
@@ -110,6 +192,7 @@ try {
         frontendUrl,
         bodyLength: bodyText.length,
         joined: true,
+        intervention: true,
         member: verifyMember,
       },
       null,
@@ -117,12 +200,11 @@ try {
     ),
   );
 } finally {
-  const apiBase = process.env.FRONTEND_URL
-    ? new URL(process.env.FRONTEND_URL).origin
-    : 'http://localhost:8787';
   await doFetch(`${apiBase}/api/pods/frontend-pod/members/${encodeURIComponent(verifyMember)}`, {
     method: 'DELETE',
   }).catch(() => {});
   await browser.close();
   await stopChild(preview);
 }
+
+process.exit(0);
