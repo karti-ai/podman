@@ -49,6 +49,22 @@ function memoryText(collision: Collision): string {
     .join('\n');
 }
 
+function cosine(a: number[], b: number[]): number {
+  const n = Math.min(a.length, b.length);
+  let dot = 0;
+  let aNorm = 0;
+  let bNorm = 0;
+  for (let i = 0; i < n; i++) {
+    const av = a[i] ?? 0;
+    const bv = b[i] ?? 0;
+    dot += av * bv;
+    aNorm += av * av;
+    bNorm += bv * bv;
+  }
+  if (!aNorm || !bNorm) return -1;
+  return dot / (Math.sqrt(aNorm) * Math.sqrt(bNorm));
+}
+
 async function embed(text: string, inputType: 'document' | 'query'): Promise<number[] | null> {
   return (await embedWithVoyage(text, inputType)) ?? embedWithGemini(text, inputType);
 }
@@ -159,8 +175,8 @@ async function recallByVector(collision: Collision): Promise<RecalledCollision |
   const queryVector = await embed(memoryText(collision), 'query');
   if (!queryVector) return null;
 
+  const db = await getDb();
   try {
-    const db = await getDb();
     const [match] = await db
       .collection<StoredCollision>('collisions')
       .aggregate<StoredCollision>([
@@ -180,9 +196,27 @@ async function recallByVector(collision: Collision): Promise<RecalledCollision |
       .toArray();
     return match ? attachOutcome(match) : null;
   } catch (err) {
-    console.warn(`[memory] vector recall unavailable: ${(err as Error).message}`);
-    return null;
+    console.warn(`[memory] atlas vector recall unavailable: ${(err as Error).message}`);
   }
+
+  const candidates = await db
+    .collection<StoredCollision>('collisions')
+    .find(
+      {
+        podId: collision.podId,
+        id: { $ne: collision.id },
+        embedding: { $exists: true },
+      },
+      { projection: { _id: 0 }, limit: 100 },
+    )
+    .toArray();
+  let best: { match: StoredCollision; score: number } | null = null;
+  for (const candidate of candidates) {
+    if (!candidate.embedding?.length) continue;
+    const score = cosine(queryVector, candidate.embedding);
+    if (!best || score > best.score) best = { match: candidate, score };
+  }
+  return best && best.score > 0.5 ? attachOutcome(best.match) : null;
 }
 
 async function recallBySignature(collision: Collision): Promise<RecalledCollision | null> {
@@ -212,9 +246,10 @@ async function recallBySignature(collision: Collision): Promise<RecalledCollisio
 }
 
 /**
- * Recall prior collision patterns. Exact Mongo recall is the MVP path;
- * vector search is an optional broader fallback when Atlas is configured.
+ * Recall prior collision patterns. Atlas Vector Search is preferred when
+ * available; standalone MongoDB falls back to app-side cosine search over
+ * stored embeddings, then exact signature/file matching.
  */
 export async function recallSimilar(collision: Collision): Promise<RecalledCollision | null> {
-  return (await recallBySignature(collision)) ?? recallByVector(collision);
+  return (await recallByVector(collision)) ?? recallBySignature(collision);
 }

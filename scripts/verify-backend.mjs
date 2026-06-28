@@ -163,6 +163,13 @@ async function verifyMemoryRecall() {
   }
   const recalled = await recallSimilar({ ...seed, id: `${seed.id}_query` });
   if (!recalled) fail('memory recall did not find seeded collision');
+  const vectorRecalled = await recallSimilar({
+    ...seed,
+    id: `${seed.id}_vector_query`,
+    file: 'src/nearby-memory.ts',
+    symbol: 'nearbyMemory',
+  });
+  if (!vectorRecalled) fail('vector memory recall did not find semantically similar collision');
 }
 
 async function verifyGraph() {
