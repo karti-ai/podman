@@ -14,6 +14,7 @@ import sharp from 'sharp';
 import { AccessToken } from 'livekit-server-sdk';
 import { env } from './env.js';
 import { PodMan } from './agent/podman.js';
+import { initMemory } from './memory/db.js';
 
 const POD_ROOM = process.env.POD_ROOM ?? 'demo-pod';
 const HERMES_IDENTITY = 'podman-hermes';
@@ -30,6 +31,10 @@ async function agentToken(room: string): Promise<string> {
 }
 
 async function main() {
+  // MongoDB is mandatory. Verify the connection before joining the room so bad
+  // creds / unreachable Atlas fail loudly at boot, not silently mid-demo.
+  await initMemory();
+
   const room = new Room();
   const podman = new PodMan(room, POD_ROOM);
   await room.connect(env.LIVEKIT_URL, await agentToken(POD_ROOM), {

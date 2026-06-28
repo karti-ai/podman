@@ -177,7 +177,11 @@ http.listen(env.PORT, '0.0.0.0', () => {
   console.log(`[server] :${env.PORT}`);
   initMemory()
     .then(() => seedDefaultPods())
-    .catch((e) => console.warn(`[memory] init failed: ${(e as Error).message}`));
+    .catch((e) => {
+      // MongoDB is mandatory — do not run a half-dead API against a broken DB.
+      console.error(`[memory] init FAILED, exiting: ${(e as Error).message}`);
+      process.exit(1);
+    });
 });
 
 let shuttingDown = false;

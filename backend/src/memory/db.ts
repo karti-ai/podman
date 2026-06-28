@@ -69,21 +69,15 @@ export async function getGitStates(podId: string): Promise<Map<string, GitState>
     recentCommit?: string | null;
     gitUpdatedAt?: Date;
   }>('engineer_states');
+  const docs = await col.find({ podId }).toArray();
   const map = new Map<string, GitState>();
-  try {
-    const docs = await col.find({ podId }).toArray();
-    for (const doc of docs) {
-      map.set(doc.name, {
-        changedFiles: doc.changedFiles ?? [],
-        branch: doc.branch ?? null,
-        recentCommit: doc.recentCommit ?? null,
-        gitUpdatedAt: doc.gitUpdatedAt ?? null,
-      });
-    }
-  } catch (err) {
-    // Best-effort: a Mongo hiccup degrades git fusion, it must not crash the
-    // live agent loop. Detection falls back to vision-only signals.
-    console.warn(`[memory] getGitStates failed: ${(err as Error).message}`);
+  for (const doc of docs) {
+    map.set(doc.name, {
+      changedFiles: doc.changedFiles ?? [],
+      branch: doc.branch ?? null,
+      recentCommit: doc.recentCommit ?? null,
+      gitUpdatedAt: doc.gitUpdatedAt ?? null,
+    });
   }
   return map;
 }

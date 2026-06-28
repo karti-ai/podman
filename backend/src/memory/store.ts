@@ -10,14 +10,16 @@ import { enrichCollisionMemory } from './vectors.js';
 
 /**
  * Continual-learning memory: persist observations, collisions, interventions,
- * and outcomes to MongoDB so later sessions get sharper. Writes are best-effort
- * — a Mongo hiccup logs a warning rather than crashing the agent/server.
+ * and outcomes to MongoDB so later sessions get sharper. MongoDB is mandatory —
+ * a failed write is surfaced loudly and rethrown, never silently swallowed, so
+ * a broken memory layer can never masquerade as a working one.
  */
 async function persist(name: string, fn: () => Promise<unknown>): Promise<void> {
   try {
     await fn();
   } catch (err) {
-    console.warn(`[memory] ${name} persist failed: ${(err as Error).message}`);
+    console.error(`[memory] ${name} persist FAILED: ${(err as Error).message}`);
+    throw err;
   }
 }
 
