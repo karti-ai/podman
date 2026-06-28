@@ -14,6 +14,7 @@ import {
   MicIcon,
   MicOffIcon,
   MonitorUpIcon,
+  Music2Icon,
   PhoneCallIcon,
   PhoneOffIcon,
   PanelLeftIcon,
@@ -26,6 +27,7 @@ import {
   VolumeXIcon,
   WorkflowIcon,
   XIcon,
+  type LucideIcon,
 } from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication } from 'livekit-client';
 import type {
@@ -637,47 +639,61 @@ export function PodView({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-                  <Button
-                    variant={audioBlocked ? 'default' : 'outline'}
-                    onClick={() => void enableSound()}
-                    disabled={!room}
-                  >
-                    {audioBlocked ? (
-                      <VolumeXIcon data-icon="inline-start" />
-                    ) : (
-                      <Volume2Icon data-icon="inline-start" />
-                    )}
-                    {audioBlocked ? 'Enable audio' : 'Audio on'}
-                  </Button>
-                  <Button
-                    variant={micOn ? 'default' : 'outline'}
-                    onClick={() => void toggleMic()}
-                    disabled={!room}
-                  >
-                    {micOn ? (
-                      <MicIcon data-icon="inline-start" />
-                    ) : (
-                      <MicOffIcon data-icon="inline-start" />
-                    )}
-                    {micOn ? 'Mic on' : 'Enable mic'}
-                  </Button>
-                  <Button variant="outline" onClick={onToggleBeat} disabled={!room}>
-                    <Volume2Icon data-icon="inline-start" />
-                    {beat.on ? (beat.mine ? 'Stop music' : `Stop (${beat.by})`) : 'Background Music'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => void playPodManVoiceTest()}
-                    disabled={!room || testingVoice}
-                  >
-                    <RadioTowerIcon data-icon="inline-start" />
-                    {testingVoice ? 'Sending voice' : 'Test PodMan voice'}
-                  </Button>
-                  <Button onClick={toggleScreen} disabled={!room}>
-                    <MonitorUpIcon data-icon="inline-start" />
-                    {sharing ? 'Stop sharing' : 'Share screen'}
-                  </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-0.5 rounded-xl border bg-card/80 p-1 shadow-sm backdrop-blur-sm">
+                    <PodControlButton
+                      label={audioBlocked ? 'Enable audio' : 'Audio on'}
+                      icon={audioBlocked ? VolumeXIcon : Volume2Icon}
+                      onClick={() => void enableSound()}
+                      disabled={!room}
+                      active={!audioBlocked}
+                      attention={audioBlocked}
+                    />
+                    <PodControlButton
+                      label={micOn ? 'Mic on' : 'Enable mic'}
+                      icon={micOn ? MicIcon : MicOffIcon}
+                      onClick={() => void toggleMic()}
+                      disabled={!room}
+                      active={micOn}
+                    />
+                    <PodControlButton
+                      label={
+                        beat.on
+                          ? beat.mine
+                            ? 'Stop background music'
+                            : `Stop music (${beat.by})`
+                          : 'Background music'
+                      }
+                      icon={Music2Icon}
+                      onClick={onToggleBeat}
+                      disabled={!room}
+                      active={beat.on}
+                    />
+                    <PodControlButton
+                      label={testingVoice ? 'Sending voice…' : 'Test PodMan voice'}
+                      icon={RadioTowerIcon}
+                      onClick={() => void playPodManVoiceTest()}
+                      disabled={!room || testingVoice}
+                      active={testingVoice}
+                      busy={testingVoice}
+                    />
+                  </div>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={toggleScreen}
+                        disabled={!room}
+                        variant={sharing ? 'destructive' : 'default'}
+                      >
+                        <MonitorUpIcon data-icon="inline-start" />
+                        {sharing ? 'Stop sharing' : 'Share screen'}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {sharing ? 'Stop sharing your screen' : 'Share your screen with PodMan'}
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             </section>
@@ -1692,4 +1708,47 @@ function initials(name: string): string {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+}
+
+/**
+ * Compact, icon-only control for the pod toolbar. The label is hidden by
+ * default and surfaced on hover/focus via tooltip, so the row stays tight and
+ * responsive. `active` fills the button (engaged state), `attention` promotes
+ * it to the primary colour (needs a user action, e.g. audio is blocked).
+ */
+function PodControlButton({
+  label,
+  icon: Icon,
+  onClick,
+  disabled,
+  active = false,
+  attention = false,
+  busy = false,
+}: {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  attention?: boolean;
+  busy?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant={attention ? 'default' : active ? 'secondary' : 'ghost'}
+          aria-pressed={active}
+          aria-label={label}
+          onClick={onClick}
+          disabled={disabled}
+        >
+          <Icon className={cn(busy && 'animate-pulse')} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
 }
