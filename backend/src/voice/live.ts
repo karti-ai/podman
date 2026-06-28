@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import {
   AudioFrame,
   AudioSource,
@@ -12,6 +13,7 @@ import { env } from '../env.js';
 
 const SAMPLE_RATE = 24_000;
 const CHANNELS = 1;
+const FRAME_SAMPLES = SAMPLE_RATE / 10;
 const encoder = new TextEncoder();
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
@@ -44,6 +46,72 @@ function audioFrames(message: LiveServerMessage): AudioFrame[] {
   return out;
 }
 
+function framesFromPcmBase64(data: string, mimeType?: string): AudioFrame[] {
+  const frame = audioFrameFromBase64(data, mimeType);
+  if (!frame) return [];
+
+  const samples = frame.data;
+  const frames: AudioFrame[] = [];
+  for (let offset = 0; offset < samples.length; offset += FRAME_SAMPLES) {
+    const chunk = samples.subarray(offset, Math.min(offset + FRAME_SAMPLES, samples.length));
+    frames.push(new AudioFrame(chunk, SAMPLE_RATE, CHANNELS, chunk.length / CHANNELS));
+  }
+  return frames;
+}
+
+async function generateTtsFrames(message: string): Promise<AudioFrame[]> {
+  const res = await ai.models.generateContent({
+    model: env.GEMINI_LIVE_MODEL,
+    contents: [{ parts: [{ text: message }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+    },
+  });
+  const parts = res.candidates?.[0]?.content?.parts ?? [];
+  return parts.flatMap((part) =>
+    framesFromPcmBase64(part.inlineData?.data ?? '', part.inlineData?.mimeType),
+  );
+}
+
+async function speakWithTts(source: AudioSource, message: string): Promise<void> {
+  for (const frame of await generateTtsFrames(message)) {
+    await source.captureFrame(frame);
+  }
+}
+
+async function speakWithLive(source: AudioSource, message: string): Promise<void> {
+  let done: () => void = () => {};
+  const donePromise = new Promise<void>((resolve) => {
+    done = resolve;
+  });
+  const session: Session = await ai.live.connect({
+    model: env.GEMINI_LIVE_MODEL,
+    config: { responseModalities: [Modality.AUDIO] },
+    callbacks: {
+      onmessage: (event) => {
+        void (async () => {
+          for (const frame of audioFrames(event)) await source.captureFrame(frame);
+          if (event.serverContent?.turnComplete || event.serverContent?.generationComplete) done();
+        })();
+      },
+      onerror: (event) => {
+        console.warn(`[voice] Gemini Live error: ${event.message}`);
+        done();
+      },
+      onclose: done,
+    },
+  });
+
+  session.sendClientContent({
+    turns: [{ role: 'user', parts: [{ text: message }] }],
+    turnComplete: true,
+  });
+
+  await Promise.race([donePromise, new Promise((resolve) => setTimeout(resolve, 15_000))]);
+  session.close();
+}
+
 /**
  * Speak a message into the LiveKit room using Gemini Live audio. A data-channel
  * VOICE_CUE is sent first so clients still get the cue if audio generation or
@@ -60,38 +128,8 @@ export async function speak(room: Room, message: string): Promise<void> {
 
   try {
     const publication = await room.localParticipant.publishTrack(track, options);
-    let done: () => void = () => {};
-    const donePromise = new Promise<void>((resolve) => {
-      done = resolve;
-    });
-    let session: Session | null = null;
-
-    session = await ai.live.connect({
-      model: env.GEMINI_LIVE_MODEL,
-      config: { responseModalities: [Modality.AUDIO] },
-      callbacks: {
-        onmessage: (event) => {
-          void (async () => {
-            for (const frame of audioFrames(event)) await source.captureFrame(frame);
-            if (event.serverContent?.turnComplete || event.serverContent?.generationComplete)
-              done();
-          })();
-        },
-        onerror: (event) => {
-          console.warn(`[voice] Gemini Live error: ${event.message}`);
-          done();
-        },
-        onclose: done,
-      },
-    });
-
-    session.sendClientContent({
-      turns: [{ role: 'user', parts: [{ text: message }] }],
-      turnComplete: true,
-    });
-
-    await Promise.race([donePromise, new Promise((resolve) => setTimeout(resolve, 15_000))]);
-    session.close();
+    if (env.GEMINI_LIVE_MODEL.includes('tts')) await speakWithTts(source, message);
+    else await speakWithLive(source, message);
     if (publication.sid) await room.localParticipant.unpublishTrack(publication.sid, true);
     await source.close();
   } catch (err) {

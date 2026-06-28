@@ -5,6 +5,13 @@ function req(name: string): string {
   if (!v) throw new Error(`Missing required env var: ${name}`);
   return v;
 }
+function reqAny(primary: string, aliases: string[] = []): string {
+  for (const name of [primary, ...aliases]) {
+    const v = process.env[name];
+    if (v) return v;
+  }
+  throw new Error(`Missing required env var: ${primary}`);
+}
 function opt(name: string, fallback = ''): string {
   return process.env[name] ?? fallback;
 }
@@ -15,9 +22,9 @@ export const env = {
   LIVEKIT_API_KEY: req('LIVEKIT_API_KEY'),
   LIVEKIT_API_SECRET: req('LIVEKIT_API_SECRET'),
   // Gemini
-  GEMINI_API_KEY: req('GEMINI_API_KEY'),
+  GEMINI_API_KEY: reqAny('GEMINI_API_KEY', ['GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY']),
   GEMINI_VISION_MODEL: opt('GEMINI_VISION_MODEL', 'gemini-2.0-flash'),
-  GEMINI_LIVE_MODEL: opt('GEMINI_LIVE_MODEL', 'gemini-live-2.5-flash'),
+  GEMINI_LIVE_MODEL: opt('GEMINI_LIVE_MODEL', 'gemini-3.1-flash-tts-preview'),
   // GitHub
   GITHUB_TOKEN: req('GITHUB_TOKEN'),
   GITHUB_REPO: req('GITHUB_REPO'), // owner/name

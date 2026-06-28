@@ -83,6 +83,6 @@ export class PodMan {
       reliable: true,
       topic: DATA_TOPIC,
     });
-    await speak(this.room, message); // gemini-3.1-flash-live voice into the room
+    await speak(this.room, message); // Gemini voice audio into the room
   }
 }

@@ -109,11 +109,11 @@ Respond with the message text only.
 
 ---
 
-## 4. Voice Output — Gemini Live 2.5 via LiveKit
+## 4. Voice Output — Gemini TTS via LiveKit
 
-**Model:** `gemini-live-2.5-flash` (confirm exact ID from LiveKit Agents docs)
+**Model:** `gemini-3.1-flash-tts-preview`
 
-**Integration:** LiveKit Agents framework — Hermes runs as a LiveKit Agent with Gemini Live 2.5 as the voice provider
+**Integration:** Hermes generates Gemini TTS audio and publishes it as a LiveKit audio track. The code still preserves a Gemini Live path for future available Live models.
 
 **Flow:**
 

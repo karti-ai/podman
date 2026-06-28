@@ -72,7 +72,7 @@ PodMan is a real-time AI team coordination agent for software teams. Engineers j
 - **Vision:** `gemini-2.0-flash` — screen → `{ currentFile, inferredTask, terminalVisible, recentTerminalOutput, confidence }`
 - **Event detection:** `gemini-2.0-flash` — all engineer states → `{ event, involvedEngineers, file, reason }`
 - **Nudge generation:** `gemini-2.0-flash` — event → spoken message text
-- **Voice:** `gemini-live-2.5-flash` via LiveKit Agents — text → streaming audio
+- **Voice:** `gemini-3.1-flash-tts-preview` via LiveKit audio publication — text → audio
 
 ### MongoDB Atlas (4 collections)
 

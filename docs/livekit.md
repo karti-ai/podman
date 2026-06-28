@@ -89,11 +89,11 @@ Hermes uses the same endpoint. Grants:
 
 ---
 
-## Gemini Live 2.5 model
+## Gemini voice model
 
-- Model ID: `gemini-live-2.5-flash` — confirm exact ID from LiveKit Agents + Gemini docs at build time
-- LiveKit Agents has native Gemini Live integration — no manual audio encoding needed
-- Hermes passes text string → Agents handles streaming audio publication
+- Model ID: `gemini-3.1-flash-tts-preview`
+- Hermes generates Gemini TTS audio and publishes it as a LiveKit audio track.
+- The backend keeps a Gemini Live path for future model availability, but the verified deployment path uses TTS.
 
 ---
 

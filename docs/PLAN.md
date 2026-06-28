@@ -205,9 +205,9 @@ From the remote plan snapshot and health check on `2026-06-27`:
   not an implemented research agent yet.
 - Deployment reliability is partial; API health is reachable, but API/static
   site/worker together must still be reverified before demo.
-- Env docs are inconsistent: backend defaults are `gemini-3.5-flash` and
-  `gemini-3.1-flash-live-preview`, while `.env.example` still lists older
-  Gemini model names.
+- Env docs now align on `gemini-3.5-flash` for vision and
+  `gemini-3.1-flash-tts-preview` for voice. The backend still preserves a Gemini
+  Live path for future available Live models.
 
 ### Not yet proven
 

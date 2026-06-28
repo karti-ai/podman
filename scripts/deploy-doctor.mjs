@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { Buffer } from 'node:buffer';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { MongoClient } from 'mongodb';
@@ -15,7 +16,6 @@ const requiredEnv = [
   'LIVEKIT_URL',
   'LIVEKIT_API_KEY',
   'LIVEKIT_API_SECRET',
-  'GEMINI_API_KEY',
   'GITHUB_TOKEN',
   'GITHUB_REPO',
   'MONGODB_URI',
@@ -31,6 +31,19 @@ function add(name, status, detail = '') {
 
 function isSet(name) {
   return !!process.env[name]?.trim();
+}
+
+function configuredGeminiKey() {
+  const candidates = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'];
+  for (const name of candidates) {
+    const value = process.env[name]?.trim();
+    if (!value) continue;
+    if (/replace|todo|example|your|xxx/i.test(value) || value.length < 20) {
+      throw new Error(`${name} looks like a placeholder or truncated key`);
+    }
+    return { name, value };
+  }
+  throw new Error('GEMINI_API_KEY is not set');
 }
 
 async function check(name, fn) {
@@ -205,12 +218,12 @@ async function checkGitHub() {
 }
 
 async function checkGeminiVision() {
-  if (!isSet('GEMINI_API_KEY')) throw new Error('GEMINI_API_KEY is not set');
+  const key = configuredGeminiKey();
   const model = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.0-flash';
   const res = await doFetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model,
-    )}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
+    )}:generateContent?key=${encodeURIComponent(key.value)}`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -224,19 +237,39 @@ async function checkGeminiVision() {
   return model;
 }
 
-async function checkGeminiLiveListed() {
-  if (!isSet('GEMINI_API_KEY')) throw new Error('GEMINI_API_KEY is not set');
-  const model = process.env.GEMINI_LIVE_MODEL ?? 'gemini-live-2.5-flash';
+async function checkGeminiVoiceModel() {
+  const key = configuredGeminiKey();
+  const model = process.env.GEMINI_LIVE_MODEL ?? 'gemini-3.1-flash-tts-preview';
   const res = await doFetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
-      process.env.GEMINI_API_KEY,
-    )}`,
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key.value)}`,
   );
   if (!res.ok) throw new Error(await responseError('Gemini model list', res));
   const body = await res.json();
   const names = (body.models ?? []).map((m) => m.name?.replace(/^models\//, ''));
   if (!names.includes(model)) throw new Error(`${model} not present in Gemini model list`);
-  return model;
+  if (!model.includes('tts')) return model;
+
+  const tts = await doFetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model,
+    )}:generateContent?key=${encodeURIComponent(key.value)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Say clearly: PodMan voice check.' }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+        },
+      }),
+    },
+  );
+  if (!tts.ok) throw new Error(await responseError('Gemini voice check', tts));
+  const ttsBody = await tts.json();
+  const audio = ttsBody.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  if (!audio) throw new Error('Gemini voice response had no audio');
+  return `${model}, generated ${Buffer.from(audio, 'base64').byteLength} audio bytes`;
 }
 
 async function checkVoyage() {
@@ -262,6 +295,16 @@ await check('workspace', checkWorkspace);
 for (const name of requiredEnv) {
   add(`env:${name}`, isSet(name) ? 'ok' : 'fail', isSet(name) ? 'set' : 'missing');
 }
+try {
+  const key = configuredGeminiKey();
+  add(
+    'env:GEMINI_API_KEY',
+    'ok',
+    key.name === 'GEMINI_API_KEY' ? 'set' : `using ${key.name} alias`,
+  );
+} catch (err) {
+  add('env:GEMINI_API_KEY', 'fail', summarizeError(err));
+}
 for (const name of optionalEnv) {
   add(`env:${name}`, isSet(name) ? 'ok' : 'warn', isSet(name) ? 'set' : 'optional');
 }
@@ -281,7 +324,7 @@ await check('livekit room service', checkLiveKitApi);
 await check('mongo ping', checkMongo);
 await check('github repo access', checkGitHub);
 await check('gemini vision model', checkGeminiVision);
-await check('gemini live model listed', checkGeminiLiveListed);
+await check('gemini voice model', checkGeminiVoiceModel);
 
 if (isSet('VOYAGE_API_KEY')) {
   await check('voyage embeddings', checkVoyage);
