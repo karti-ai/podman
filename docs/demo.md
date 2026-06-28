@@ -30,52 +30,78 @@ every actor, every day, is the value.
 
 ## 1-Minute Live Script (you + teammates — real-time interventions)
 
-**Goal:** prove the core loop in 60 seconds — multiple people working at once,
-PodMan catches the collision and **notifies everyone live (card + voice)** with
-nobody having to ask. **Hard limit:** 1:00.
+**Goal:** in 60 seconds, prove the unprecedented loop — real-time multimodal
+perception → live collision intervention spoken by an **on-device Gemma model**
+→ a **self-improving** coordination layer. Hits four judging tracks: Continual
+Learning, the Self-Improvement Stack, Recursive Intelligence, and on-device
+Gemma. **Hard limit:** 1:00.
 
-**Setup before you start (off camera):**
+**Pre-flight (do NOT skip — these are the win conditions):**
 
-- Pod open on the shared screen (`podman.live`), all teammates joined with screen
-  share on. Sound on — voice is live for **every** intervention now.
+- **On-device Gemma must be committed and running** as Hermes's voice/reasoning
+  layer before showtime. Verify it speaks once in rehearsal. If it isn't up,
+  PodMan **automatically falls back to Gemini TTS** — the demo still works, you
+  just drop the "on-device" line. Never debug Gemma on stage.
+- Pod open on the shared screen (`podman.live`), all teammates joined, screen
+  share on, **sound on** — voice is live for _every_ intervention now.
 - Each teammate's git watcher running so local unpushed edits report in.
-- Have everyone with `README.md` open and ready to type. Pre-pick the two who
-  will collide first (e.g. you + a teammate).
+- Everyone has `README.md` open, ready to type. Pre-pick the first colliding
+  pair (you + a teammate).
 
 ### 0:00–0:12 — The thesis (one breath)
 
-> "Writing code is basically free now — humans with AI, and soon swarms of
-> agents, all committing to one repo. Nobody can track that by hand. The
-> bottleneck isn't engineering anymore, it's coordination. Watch."
+> "Code is almost free to write now — humans with AI today, swarms of autonomous
+> agents tomorrow, all committing to one repo. No human can track that. The
+> bottleneck stopped being engineering and became coordination — and it has to
+> fix itself, on its own, in real time. Watch."
 
-_On screen:_ the pod view, teammate tiles live, activity stream moving.
+_On screen:_ pod view, teammate tiles live, activity stream moving.
 
-### 0:12–0:35 — The collision, caught live (the money shot)
+### 0:12–0:32 — Real-time perception → live intervention (the money shot)
 
 - On cue, **you and one teammate both edit `README.md`** and save (unpushed).
-- Within a cycle, a **conflict card appears on everyone's screen**:
-  _"Conflict: <you> + <teammate> both on README.md (unpushed)."_
-- The **Gemini voice fires out loud over LiveKit**: _"<you> and <teammate> are
-  both editing README.md. Please sync before pushing."_
-- Say it: "Neither of us asked the other. Neither of us was watching. PodMan saw
-  both screens plus local git, and told the whole team in real time."
+- A **conflict card appears on everyone's screen** within a cycle: _"Conflict:
+  <you> + <teammate> both on README.md (unpushed)."_
+- The voice fires out loud over LiveKit: _"<you> and <teammate> are both editing
+  README.md. Please sync before pushing."_
+- Land both the perception and the on-device beat: "PodMan is reading our actual
+  screens with **Gemini Vision** and fusing local git truth in real time — then
+  that alert is reasoned and **spoken by a Gemma model running on-device**, no
+  round-trip to a frontier API. Real-time multimodal in, on-device voice out.
+  Neither of us asked. Neither of us was watching."
 
-### 0:35–0:52 — It scales to the next actor
+### 0:32–0:48 — Self-improving coordination (narrate the stack)
 
-- Have a **third teammate** now edit the same file (or a second file). A **new**
-  card + voice fires for the new pair — _it doesn't go silent on the second
-  collision._
-- Say it: "Every new actor that steps on live work gets caught — this is exactly
-  what breaks when you add agents you can't watch."
+- Have a **third teammate** edit the same file (or a second one). A **new** card
+  + voice fires for the new pair — _it never goes silent on later collisions._
+- Narrate the self-improvement architecture (no trigger needed — it's running):
+  "Every intervention and every accept/dismiss is a trace in **MongoDB Atlas**.
+  PodMan recalls similar past collisions with **vector search**, an
+  outcome-conditioned policy adapts who to nudge and how, and repeats come back
+  tagged **'Seen before'** and escalate automatically. That's the
+  self-improvement stack — it gets sharper the more the team uses it, with no
+  retraining and almost no human input. The recursive part: it's tuning its own
+  coordination behavior from its own logged outcomes."
 
-### 0:52–1:00 — Close
+### 0:48–1:00 — Close
 
-> "Real-time awareness for a whole team, humans and agents, with zero
-> interruptions. That's the coordination layer code generation never had."
+> "Real-time multimodal awareness, on-device voice, and a coordination layer that
+> improves itself from every interaction — for a whole team of humans and agents,
+> with zero interruptions. That's the layer code generation never had."
 
-_Fallback:_ if voice doesn't fire, read the line aloud and point at the card —
-cards are the default path. If a card won't trigger, switch the colliding pair
-to a fresh file and re-save.
+**Track callouts (say at least the bolded word in each):**
+
+| Track                   | Spoken moment                                             |
+| ----------------------- | -------------------------------------------------------- |
+| Real-time multimodal    | "reading our screens with **Gemini Vision** … real time" |
+| **On-device Gemma**     | "spoken by a **Gemma** model running **on-device**"       |
+| Continual Learning      | "recalls past collisions … **'Seen before'** … no retraining" |
+| Self-Improvement Stack  | "every trace in **Atlas** … outcome-conditioned policy"   |
+| Recursive Intelligence  | "tuning its **own** coordination behavior from its outcomes" |
+
+_Fallbacks:_ Gemma down → drop the on-device line, Gemini TTS covers it. Voice
+silent → read the line aloud, point at the card (cards are the default path).
+Card won't trigger → switch the colliding pair to a fresh file and re-save.
 
 ---
 
