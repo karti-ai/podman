@@ -509,11 +509,21 @@ no schema change. Owner: RSI track. Independent of the MongoDB-cleanup handoff.
    - Spec: `docs/continual-learning/policy.md:62-63` (prefer prior accepted
      kind), `plan.md:66` (second similar event behaves differently).
 
-Follow-ups (separate rungs, not in this change): Step 3 derive
-`wasRealCollision` from git overlap; Step 4-5 `strategy_versions` +
-Gemini-proposed `LearningProposal` slice; seed a clean demo pod with a repeated
-dismissed signature (the historic 85 dismissals are orphaned — `collisionId`
-resolves to no collision — so they cannot drive the demo verifier).
+3. **Step 3 - derive `wasRealCollision` from git overlap (backend-authoritative)** ✅
+   - `backend/src/memory/store.ts` `recordOutcome` now overrides the
+     client-supplied `wasRealCollision` with `deriveWasRealCollision()`: a
+     collision is real only if BOTH named engineers currently have the collided
+     file in their git `changedFiles` (`getGitStates`, 120s freshness TTL).
+     Conservative `false` when orphaned/stale. `frontend/.../useInterventions.ts`
+     stops sending a hardcoded `true` (now a backend-overridden placeholder).
+   - Restores the (accepted × wasReal) 2×2 the spec assumes.
+   - Spec: `docs/continual-learning/spec.md:98-108`, `policy.md:35-42`.
+
+Follow-ups (separate rungs, not in this change): Step 4-5 `strategy_versions` +
+Gemini-proposed `LearningProposal` slice; Step 6 durable `owns` write; seed a
+clean demo pod with a repeated dismissed signature (the historic dismissals are
+orphaned — `collisionId` resolves to no collision — so they cannot drive the
+demo verifier).
 
 ### P1 - polish the money moment
 

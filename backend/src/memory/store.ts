@@ -5,7 +5,7 @@ import type {
   InterventionOutcome,
   InterventionStatus,
 } from '@podman/shared';
-import { collections } from './db.js';
+import { collections, getGitStates } from './db.js';
 import { enrichCollisionMemory } from './vectors.js';
 
 function comparableFile(raw?: string): string {
@@ -84,13 +84,46 @@ export async function updateInterventionStatus(
   );
 }
 
+/**
+ * Step 3 — derive whether a flagged collision was REAL from git ground truth,
+ * instead of trusting the client (which historically hardcoded `true`). A
+ * collision counts as real only if BOTH named engineers currently have the
+ * collided file in their git `changedFiles`. Conservative: returns false when
+ * the collision is orphaned/missing or git state is stale/unavailable.
+ * Verifier supervision per docs/continual-learning/spec.md:98-108, policy.md:35-42.
+ */
+export async function deriveWasRealCollision(outcome: InterventionOutcome): Promise<boolean> {
+  try {
+    const c = await collections();
+    const collision = await c.collisions.findOne({ id: outcome.collisionId });
+    if (!collision || !Array.isArray(collision.engineers) || collision.engineers.length < 2) {
+      return false;
+    }
+    const target = comparableFile(collision.file);
+    if (!target) return false;
+    const gitStates = await getGitStates(outcome.podId);
+    const touchesTarget = (name: string): boolean =>
+      (gitStates.get(name)?.changedFiles ?? []).some((f) => comparableFile(f) === target);
+    return collision.engineers.every(touchesTarget);
+  } catch (err) {
+    console.error(`[memory] wasRealCollision verifier failed: ${(err as Error).message}`);
+    return false;
+  }
+}
+
 export async function recordOutcome(outcome: InterventionOutcome): Promise<void> {
+  // Backend is authoritative for wasRealCollision: derive it from git overlap
+  // rather than trusting the client-supplied value. (RSI Step 3)
+  const verified: InterventionOutcome = {
+    ...outcome,
+    wasRealCollision: await deriveWasRealCollision(outcome),
+  };
   await persist('outcome', async () => {
     const c = await collections();
-    await c.outcomes.insertOne({ ...outcome });
+    await c.outcomes.insertOne({ ...verified });
     await c.interventions.updateOne(
-      { id: outcome.interventionId },
-      { $set: { status: outcome.accepted ? 'accepted' : 'dismissed' } },
+      { id: verified.interventionId },
+      { $set: { status: verified.accepted ? 'accepted' : 'dismissed' } },
     );
   });
 }
