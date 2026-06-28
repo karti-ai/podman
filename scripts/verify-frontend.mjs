@@ -109,6 +109,20 @@ async function publishIntervention(room, podId) {
   });
 }
 
+async function waitForInterventionCard(page, room, podId) {
+  const cardText = 'Verification collision: two engineers are editing frontend/src/App.tsx.';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await publishIntervention(room, podId);
+    try {
+      await page.getByText(cardText).waitFor({ timeout: 5_000 });
+      return;
+    } catch (error) {
+      if (attempt === 3) throw error;
+      await delay(500);
+    }
+  }
+}
+
 let preview = null;
 if (shouldStartPreview) {
   preview = spawn(
@@ -156,11 +170,17 @@ try {
   await page.getByRole('button', { name: 'Team memory' }).click();
   await page.getByText('Workflow metrics').waitFor({ timeout: 15_000 });
   await page.getByText('Learning edges').waitFor({ timeout: 15_000 });
+  await page.getByRole('img', { name: 'PodMan team-memory graph' }).waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'engineer: Karti' }).click();
+  await page.getByText('Learned owner of auth; backend + DB wiring.').waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Whole graph' }).click();
   await page.getByRole('button', { name: /Pods/i }).click();
-  await page.getByPlaceholder('Your name').first().waitFor({ timeout: 15_000 });
 
-  await page.getByPlaceholder('Your name').first().fill(verifyMember);
-  await page.getByRole('button', { name: 'Add and join' }).first().click();
+  const frontendPodCard = page
+    .getByText('Frontend Pod', { exact: true })
+    .locator('xpath=ancestor::*[.//input[@placeholder="Your name"]][1]');
+  await frontendPodCard.getByPlaceholder('Your name').fill(verifyMember);
+  await frontendPodCard.getByRole('button', { name: 'Add and join' }).click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
 
   const joinedText = await page.locator('body').innerText();
@@ -175,10 +195,7 @@ try {
 
   const publisher = await connectPublisher('frontend-pod');
   try {
-    await publishIntervention(publisher, 'frontend-pod');
-    await page
-      .getByText('Verification collision: two engineers are editing frontend/src/App.tsx.')
-      .waitFor({ timeout: 15_000 });
+    await waitForInterventionCard(page, publisher, 'frontend-pod');
     await page.getByRole('button', { name: 'Dismiss' }).click();
     await page.getByText('No collision detected').waitFor({ timeout: 15_000 });
   } finally {
