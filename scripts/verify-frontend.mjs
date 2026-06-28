@@ -186,9 +186,9 @@ function assertNoOverlap(left, main, right, label) {
   }
 }
 
-function assertStableTopbar(before, after, label) {
-  if (Math.abs(before.x - after.x) > 2 || Math.abs(before.width - after.width) > 2) {
-    throw new Error(`${label}: top bar moved or resized with sidebar state`);
+function assertContained(container, child, label) {
+  if (child.x < container.x - 2 || child.x + child.width > container.x + container.width + 2) {
+    throw new Error(`${label}: body summary is not contained inside the main workspace`);
   }
 }
 
@@ -268,12 +268,16 @@ try {
   if (!hasPodCards) throw new Error('pod cards did not render');
   if (hasOverlay) throw new Error('Vite error overlay is visible');
 
-  await page.getByRole('button', { name: 'Team memory' }).click();
+  await page.getByRole('button', { name: 'Pod actions' }).first().click();
+  await page.getByRole('menuitem', { name: 'Team memory' }).click();
   await page.getByText('Workflow metrics').waitFor({ timeout: 15_000 });
   await page.getByText('Learning edges').waitFor({ timeout: 15_000 });
   await page.getByRole('img', { name: 'PodMan team-memory graph' }).waitFor({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'engineer: Karti' }).click();
-  await page.getByText('Learned owner of auth; backend + DB wiring.').waitFor({ timeout: 15_000 });
+  await page
+    .getByRole('button', { name: /engineer:/ })
+    .first()
+    .click();
+  await page.getByText('Relationships').waitFor({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Whole graph' }).click();
   await page.getByRole('button', { name: /Pods/i }).click();
 
@@ -288,19 +292,22 @@ try {
   }
   await page.getByRole('heading', { name: 'My stream' }).waitFor({ timeout: 15_000 });
   await page.getByRole('heading', { name: 'Team stream' }).waitFor({ timeout: 15_000 });
-  const topbar = page.getByTestId('pod-topbar');
+  const bodySummary = page.getByTestId('pod-body-summary');
   const mainWorkspace = page.getByTestId('pod-main-workspace');
   const mySidebar = page.getByTestId('my-stream-sidebar');
   const teamSidebar = page.getByTestId('team-stream-sidebar');
-  await topbar.waitFor({ timeout: 15_000 });
+  await bodySummary.waitFor({ timeout: 15_000 });
   await mainWorkspace.waitFor({ timeout: 15_000 });
   await mySidebar.waitFor({ timeout: 15_000 });
   await teamSidebar.waitFor({ timeout: 15_000 });
-  if ((await topbar.getByRole('button', { name: /stream|team/i }).count()) > 0) {
-    throw new Error('pod top bar contains sidebar stream/team controls');
+  if ((await page.getByTestId('pod-topbar').count()) > 0) {
+    throw new Error('pod detail view still renders a topbar test id');
+  }
+  if ((await bodySummary.getByRole('button', { name: /stream|team/i }).count()) > 0) {
+    throw new Error('pod body summary contains sidebar stream/team controls');
   }
   const expandedLayout = {
-    topbar: await boxOf(topbar, 'top bar expanded'),
+    summary: await boxOf(bodySummary, 'body summary expanded'),
     main: await boxOf(mainWorkspace, 'main workspace expanded'),
     left: await boxOf(mySidebar, 'my stream sidebar expanded'),
     right: await boxOf(teamSidebar, 'team stream sidebar expanded'),
@@ -311,13 +318,14 @@ try {
     expandedLayout.right,
     'expanded layout',
   );
+  assertContained(expandedLayout.main, expandedLayout.summary, 'expanded layout');
   await page.locator('[data-testid="my-stream-toggle"]:visible').click();
   await page.waitForTimeout(300);
   const leftCollapsedLayout = {
     main: await boxOf(mainWorkspace, 'main workspace after left collapse'),
     left: await boxOf(mySidebar, 'my stream sidebar collapsed'),
     right: await boxOf(teamSidebar, 'team stream sidebar with left collapsed'),
-    topbar: await boxOf(topbar, 'top bar after left collapse'),
+    summary: await boxOf(bodySummary, 'body summary after left collapse'),
   };
   if (leftCollapsedLayout.left.width >= expandedLayout.left.width - 24) {
     throw new Error('my stream sidebar did not collapse into a compact rail');
@@ -331,14 +339,14 @@ try {
     leftCollapsedLayout.right,
     'left collapsed layout',
   );
-  assertStableTopbar(expandedLayout.topbar, leftCollapsedLayout.topbar, 'left collapsed layout');
+  assertContained(leftCollapsedLayout.main, leftCollapsedLayout.summary, 'left collapsed layout');
   await page.locator('[data-testid="team-stream-toggle"]:visible').click();
   await page.waitForTimeout(300);
   const bothCollapsedLayout = {
     main: await boxOf(mainWorkspace, 'main workspace after both collapse'),
     left: await boxOf(mySidebar, 'my stream sidebar with both collapsed'),
     right: await boxOf(teamSidebar, 'team stream sidebar collapsed'),
-    topbar: await boxOf(topbar, 'top bar after both collapse'),
+    summary: await boxOf(bodySummary, 'body summary after both collapse'),
   };
   if (bothCollapsedLayout.right.width >= expandedLayout.right.width - 24) {
     throw new Error('team stream sidebar did not collapse into a compact rail');
@@ -352,7 +360,7 @@ try {
     bothCollapsedLayout.right,
     'both collapsed layout',
   );
-  assertStableTopbar(expandedLayout.topbar, bothCollapsedLayout.topbar, 'both collapsed layout');
+  assertContained(bothCollapsedLayout.main, bothCollapsedLayout.summary, 'both collapsed layout');
   await page.locator('[data-testid="my-stream-toggle"]:visible').click();
   await page.locator('[data-testid="team-stream-toggle"]:visible').click();
   await page.waitForTimeout(300);

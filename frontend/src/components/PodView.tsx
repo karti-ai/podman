@@ -22,12 +22,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
-import type {
-  Pod,
-  PodActivityEvent,
-  PodActivityKind,
-  PodActivitySource,
-} from '@podman/shared';
+import type { Pod, PodActivityEvent, PodActivityKind, PodActivitySource } from '@podman/shared';
 import { startBeat, type BeatHandle } from '../lib/beat.js';
 import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
@@ -66,7 +61,6 @@ import { cn } from '@/lib/utils';
 
 const STREAM_SIDEBAR_WIDTH = 'clamp(20rem, 22vw, 23rem)';
 const STREAM_RAIL_WIDTH = '4rem';
-const POD_TOP_BAR_HEIGHT = '5rem';
 
 interface PInfo {
   id: string;
@@ -266,301 +260,289 @@ export function PodView({
   const podmanPresent = participants.some((p) => p.name.toLowerCase() === 'podman');
 
   return (
-    <div
-      style={{ '--pod-topbar-height': POD_TOP_BAR_HEIGHT } as CSSProperties}
+    <SidebarProvider
+      open={leftStreamOpen}
+      onOpenChange={setLeftStreamOpen}
+      style={
+        {
+          '--sidebar-width': STREAM_SIDEBAR_WIDTH,
+          '--sidebar-width-icon': STREAM_RAIL_WIDTH,
+        } as CSSProperties
+      }
       className="min-h-screen bg-background text-foreground"
     >
-      <header
-        data-testid="pod-topbar"
-        className="sticky top-0 z-30 border-b bg-background/90 backdrop-blur-xl"
-      >
-        <div className="mx-auto flex min-h-20 w-full max-w-[1480px] flex-col gap-3 px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={onLeave}>
-                  <ArrowLeftIcon />
-                  <span className="sr-only">Leave pod</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Leave pod</TooltipContent>
-            </Tooltip>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-xl font-semibold tracking-tight">{team.name}</h1>
-                <Badge variant={room ? 'default' : 'secondary'} className="rounded-md">
-                  {room ? 'live' : 'local'}
-                </Badge>
-              </div>
-              <p className="truncate font-mono text-xs text-muted-foreground">{team.repo}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-            <Button variant="outline" onClick={toggleBeat} disabled={!room}>
-              <Volume2Icon data-icon="inline-start" />
-              {playingBeat ? 'Stop audio' : 'Test audio'}
-            </Button>
-            <Button onClick={toggleScreen} disabled={!room}>
-              <MonitorUpIcon data-icon="inline-start" />
-              {sharing ? 'Stop sharing' : 'Share screen'}
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <SidebarProvider
+      <ActivitySidebar
+        side="left"
+        title="My stream"
+        collapsedLabel="Mine"
+        testId="my-stream-sidebar"
+        description={`${me}'s live screen, git, intervention, and conflict log.`}
+        events={activity.mine}
+        connected={activity.connected}
         open={leftStreamOpen}
-        onOpenChange={setLeftStreamOpen}
+        onToggle={() => setLeftStreamOpen((open) => !open)}
+        emptyTitle="No personal signal yet"
+        emptyDescription="Start the local git watcher or share your IDE screen to populate this lane."
+      />
+      <SidebarProvider
+        open={rightStreamOpen}
+        onOpenChange={setRightStreamOpen}
         style={
           {
             '--sidebar-width': STREAM_SIDEBAR_WIDTH,
             '--sidebar-width-icon': STREAM_RAIL_WIDTH,
-            minHeight: 'calc(100svh - var(--pod-topbar-height))',
           } as CSSProperties
         }
-        className="bg-background text-foreground"
+        className="flex-1"
       >
-        <ActivitySidebar
-          side="left"
-          title="My stream"
-          collapsedLabel="Mine"
-          testId="my-stream-sidebar"
-          description={`${me}'s live screen, git, intervention, and conflict log.`}
-          events={activity.mine}
-          connected={activity.connected}
-          open={leftStreamOpen}
-          onToggle={() => setLeftStreamOpen((open) => !open)}
-          emptyTitle="No personal signal yet"
-          emptyDescription="Start the local git watcher or share your IDE screen to populate this lane."
-        />
-        <SidebarProvider
-          open={rightStreamOpen}
-          onOpenChange={setRightStreamOpen}
-          style={
-            {
-              '--sidebar-width': STREAM_SIDEBAR_WIDTH,
-              '--sidebar-width-icon': STREAM_RAIL_WIDTH,
-            } as CSSProperties
-          }
-          className="flex-1"
+        <SidebarInset
+          data-testid="pod-main-workspace"
+          className="min-h-screen min-w-0 bg-background"
         >
-          <SidebarInset
-            data-testid="pod-main-workspace"
-            style={{ minHeight: 'calc(100svh - var(--pod-topbar-height))' }}
-            className="min-w-0 bg-background"
-          >
-            <div
-              style={{ minHeight: 'calc(100svh - var(--pod-topbar-height))' }}
-              className="mx-auto flex w-full max-w-[1120px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8"
-            >
-              {devMode && (
-                <Alert>
-                  <RadioTowerIcon />
-                  <AlertTitle>Local mode</AlertTitle>
-                  <AlertDescription>LiveKit is not configured for this session.</AlertDescription>
-                </Alert>
-              )}
-
-              {note && (
-                <Alert>
-                  <CircleDotIcon />
-                  <AlertTitle>Room notice</AlertTitle>
-                  <AlertDescription>{note}</AlertDescription>
-                </Alert>
-              )}
-
-              {room && audioBlocked && (
-                <Alert className="flex items-center justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <Volume2Icon />
-                    <div>
-                      <AlertTitle>Sound is off</AlertTitle>
-                      <AlertDescription>Click to hear PodMan&apos;s voice alerts.</AlertDescription>
+          <div className="mx-auto flex min-h-screen w-full max-w-[1120px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+            <section data-testid="pod-body-summary" className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={onLeave}>
+                        <ArrowLeftIcon />
+                        <span className="sr-only">Leave pod</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Leave pod</TooltipContent>
+                  </Tooltip>
+                  <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
+                    {initials(team.name) || 'PM'}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1 className="text-[1.75rem] font-semibold leading-none tracking-tight">
+                        {team.name}
+                      </h1>
+                      <Badge variant={room ? 'default' : 'secondary'} className="rounded-md">
+                        {room ? 'live' : 'local'}
+                      </Badge>
                     </div>
+                    <p className="truncate font-mono text-xs text-muted-foreground">{team.repo}</p>
                   </div>
-                  <Button size="sm" onClick={() => void enableSound()}>
-                    Enable sound
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                  <Button variant="outline" onClick={toggleBeat} disabled={!room}>
+                    <Volume2Icon data-icon="inline-start" />
+                    {playingBeat ? 'Stop audio' : 'Test audio'}
                   </Button>
-                </Alert>
-              )}
+                  <Button onClick={toggleScreen} disabled={!room}>
+                    <MonitorUpIcon data-icon="inline-start" />
+                    {sharing ? 'Stop sharing' : 'Share screen'}
+                  </Button>
+                </div>
+              </div>
 
-              <main className="grid flex-1 gap-5 min-[1800px]:grid-cols-[minmax(0,1fr)_340px]">
-                <section className="flex min-w-0 flex-col gap-5">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <Metric label="Participants" value={participants.length || 1} />
-                    <Metric label="Screen" value={sharing ? 'sharing' : 'idle'} />
-                    <Metric label="PodMan" value={podmanPresent ? 'online' : 'waiting'} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Metric label="Participants" value={participants.length || 1} />
+                <Metric label="Screen" value={sharing ? 'sharing' : 'idle'} />
+                <Metric label="PodMan" value={podmanPresent ? 'online' : 'waiting'} />
+              </div>
+            </section>
+
+            {devMode && (
+              <Alert>
+                <RadioTowerIcon />
+                <AlertTitle>Local mode</AlertTitle>
+                <AlertDescription>LiveKit is not configured for this session.</AlertDescription>
+              </Alert>
+            )}
+
+            {note && (
+              <Alert>
+                <CircleDotIcon />
+                <AlertTitle>Room notice</AlertTitle>
+                <AlertDescription>{note}</AlertDescription>
+              </Alert>
+            )}
+
+            {room && audioBlocked && (
+              <Alert className="flex items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <Volume2Icon />
+                  <div>
+                    <AlertTitle>Sound is off</AlertTitle>
+                    <AlertDescription>Click to hear PodMan&apos;s voice alerts.</AlertDescription>
                   </div>
+                </div>
+                <Button size="sm" onClick={() => void enableSound()}>
+                  Enable sound
+                </Button>
+              </Alert>
+            )}
 
-                  <Card className="flex-1">
-                    <CardHeader>
-                      <CardTitle>Room state</CardTitle>
-                      <CardDescription>
-                        People and media currently visible to PodMan.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {participants.length === 0 ? (
-                        <Empty className="min-h-80">
-                          <EmptyHeader>
-                            <EmptyMedia variant="icon">
-                              <RadioTowerIcon />
-                            </EmptyMedia>
-                            <EmptyTitle>Connecting</EmptyTitle>
-                            <EmptyDescription>Waiting for LiveKit room state.</EmptyDescription>
-                          </EmptyHeader>
-                        </Empty>
-                      ) : (
-                        <div className="grid gap-2 md:grid-cols-2">
-                          {participants.map((p) => (
-                            <Participant key={p.id} participant={p} />
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                    <CardFooter>
-                      <p className="truncate text-sm text-muted-foreground">
-                        Roster: {team.members.join(', ') || 'No saved members'}
-                      </p>
-                    </CardFooter>
-                  </Card>
-
-                  {activity.error && (
-                    <p className="text-xs text-muted-foreground">{activity.error}</p>
-                  )}
-                </section>
-
-                <aside className="flex flex-col gap-5">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Intervention</CardTitle>
-                      <CardDescription>
-                        Card first, voice only for urgent escalation.
-                      </CardDescription>
-                      <CardAction>
-                        <Badge variant={active ? 'default' : 'secondary'} className="rounded-md">
-                          {active ? 'active' : 'clear'}
-                        </Badge>
-                      </CardAction>
-                    </CardHeader>
-                    <CardContent>
-                      {active ? (
-                        <div className="flex flex-col gap-4">
-                          <div className="rounded-lg border bg-muted/35 p-3">
-                            <p className="text-sm leading-6">{active.message}</p>
-                          </div>
-                          <div className="flex items-center justify-between gap-3 text-sm">
-                            <span className="text-muted-foreground">Suggested action</span>
-                            <Badge variant="outline">
-                              {active.suggestedAction.kind.replaceAll('_', ' ')}
-                            </Badge>
-                          </div>
-                          {hermes?.interventionId === active.id && (
-                            <div className="rounded-lg border border-dashed p-3">
-                              <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                                <MessageSquareIcon className="size-3.5" />
-                                Hermes message
-                              </div>
-                              <p className="text-sm leading-6">{hermes.text}</p>
-                            </div>
-                          )}
-                          {voiceCue && (
-                            <div className="rounded-lg border border-dashed p-3">
-                              <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                                <Volume2Icon className="size-3.5" />
-                                Voice cue
-                              </div>
-                              <p className="text-sm leading-6">{voiceCue}</p>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <Empty className="min-h-72 border-0 p-0">
-                          <EmptyHeader>
-                            <EmptyMedia variant="icon">
-                              <SparklesIcon />
-                            </EmptyMedia>
-                            <EmptyTitle>No collision detected</EmptyTitle>
-                            <EmptyDescription>
-                              Share your screen when ready. PodMan will stay quiet until there is a
-                              useful signal.
-                            </EmptyDescription>
-                          </EmptyHeader>
-                        </Empty>
-                      )}
-                      {actionUrl && (
-                        <a
-                          href={actionUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-4 flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium hover:bg-muted"
-                        >
-                          Sync PR artifact opened
-                          <ExternalLinkIcon className="size-4" />
-                        </a>
-                      )}
-                    </CardContent>
-                    {active && (
-                      <CardFooter className="justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => void answerIntervention('dismissed', false)}
-                        >
-                          <XIcon data-icon="inline-start" />
-                          Dismiss
-                        </Button>
-                        <Button onClick={() => void answerIntervention('accepted', true)}>
-                          <CheckIcon data-icon="inline-start" />
-                          Accept
-                        </Button>
-                      </CardFooter>
-                    )}
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Status</CardTitle>
-                      <CardDescription>Connection, media, and agent presence.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <LiveWaveform
-                        processing={!!room}
-                        active={false}
-                        height={32}
-                        barWidth={2}
-                        barGap={3}
-                        className="mb-4 px-3 py-2 text-muted-foreground"
-                      />
-                      <div className="flex flex-col gap-3">
-                        <StatusLine label="LiveKit" value={room ? 'connected' : 'offline'} />
-                        <StatusLine label="Screen" value={sharing ? 'published' : 'not shared'} />
-                        <StatusLine label="Audio" value={playingBeat ? 'publishing' : 'ready'} />
-                        <StatusLine label="Agent" value={podmanPresent ? 'watching' : 'waiting'} />
+            <main className="grid flex-1 gap-5 min-[1800px]:grid-cols-[minmax(0,1fr)_340px]">
+              <section className="flex min-w-0 flex-col gap-5">
+                <Card className="flex-1">
+                  <CardHeader>
+                    <CardTitle>Room state</CardTitle>
+                    <CardDescription>People and media currently visible to PodMan.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {participants.length === 0 ? (
+                      <Empty className="min-h-80">
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <RadioTowerIcon />
+                          </EmptyMedia>
+                          <EmptyTitle>Connecting</EmptyTitle>
+                          <EmptyDescription>Waiting for LiveKit room state.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {participants.map((p) => (
+                          <Participant key={p.id} participant={p} />
+                        ))}
                       </div>
-                    </CardContent>
-                  </Card>
-                </aside>
-              </main>
-              <div ref={audioRef} className="hidden" />
-            </div>
-          </SidebarInset>
-          <ActivitySidebar
-            side="right"
-            title="Team stream"
-            collapsedLabel="Team"
-            testId="team-stream-sidebar"
-            description="Everyone else in this pod, merged into one realtime feed."
-            events={activity.team}
-            connected={activity.connected}
-            open={rightStreamOpen}
-            onToggle={() => setRightStreamOpen((open) => !open)}
-            emptyTitle="No teammate signal yet"
-            emptyDescription="Waiting for other members' screen, git, or collision events."
-          />
-        </SidebarProvider>
+                    )}
+                  </CardContent>
+                  <CardFooter>
+                    <p className="truncate text-sm text-muted-foreground">
+                      Roster: {team.members.join(', ') || 'No saved members'}
+                    </p>
+                  </CardFooter>
+                </Card>
+
+                {activity.error && (
+                  <p className="text-xs text-muted-foreground">{activity.error}</p>
+                )}
+              </section>
+
+              <aside className="flex flex-col gap-5">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Intervention</CardTitle>
+                    <CardDescription>Card first, voice only for urgent escalation.</CardDescription>
+                    <CardAction>
+                      <Badge variant={active ? 'default' : 'secondary'} className="rounded-md">
+                        {active ? 'active' : 'clear'}
+                      </Badge>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent>
+                    {active ? (
+                      <div className="flex flex-col gap-4">
+                        <div className="rounded-lg border bg-muted/35 p-3">
+                          <p className="text-sm leading-6">{active.message}</p>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-muted-foreground">Suggested action</span>
+                          <Badge variant="outline">
+                            {active.suggestedAction.kind.replaceAll('_', ' ')}
+                          </Badge>
+                        </div>
+                        {hermes?.interventionId === active.id && (
+                          <div className="rounded-lg border border-dashed p-3">
+                            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                              <MessageSquareIcon className="size-3.5" />
+                              Hermes message
+                            </div>
+                            <p className="text-sm leading-6">{hermes.text}</p>
+                          </div>
+                        )}
+                        {voiceCue && (
+                          <div className="rounded-lg border border-dashed p-3">
+                            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                              <Volume2Icon className="size-3.5" />
+                              Voice cue
+                            </div>
+                            <p className="text-sm leading-6">{voiceCue}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <Empty className="min-h-72 border-0 p-0">
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <SparklesIcon />
+                          </EmptyMedia>
+                          <EmptyTitle>No collision detected</EmptyTitle>
+                          <EmptyDescription>
+                            Share your screen when ready. PodMan will stay quiet until there is a
+                            useful signal.
+                          </EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    )}
+                    {actionUrl && (
+                      <a
+                        href={actionUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-4 flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium hover:bg-muted"
+                      >
+                        Sync PR artifact opened
+                        <ExternalLinkIcon className="size-4" />
+                      </a>
+                    )}
+                  </CardContent>
+                  {active && (
+                    <CardFooter className="justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => void answerIntervention('dismissed', false)}
+                      >
+                        <XIcon data-icon="inline-start" />
+                        Dismiss
+                      </Button>
+                      <Button onClick={() => void answerIntervention('accepted', true)}>
+                        <CheckIcon data-icon="inline-start" />
+                        Accept
+                      </Button>
+                    </CardFooter>
+                  )}
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Status</CardTitle>
+                    <CardDescription>Connection, media, and agent presence.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <LiveWaveform
+                      processing={!!room}
+                      active={false}
+                      height={32}
+                      barWidth={2}
+                      barGap={3}
+                      className="mb-4 px-3 py-2 text-muted-foreground"
+                    />
+                    <div className="flex flex-col gap-3">
+                      <StatusLine label="LiveKit" value={room ? 'connected' : 'offline'} />
+                      <StatusLine label="Screen" value={sharing ? 'published' : 'not shared'} />
+                      <StatusLine label="Audio" value={playingBeat ? 'publishing' : 'ready'} />
+                      <StatusLine label="Agent" value={podmanPresent ? 'watching' : 'waiting'} />
+                    </div>
+                  </CardContent>
+                </Card>
+              </aside>
+            </main>
+            <div ref={audioRef} className="hidden" />
+          </div>
+        </SidebarInset>
+        <ActivitySidebar
+          side="right"
+          title="Team stream"
+          collapsedLabel="Team"
+          testId="team-stream-sidebar"
+          description="Everyone else in this pod, merged into one realtime feed."
+          events={activity.team}
+          connected={activity.connected}
+          open={rightStreamOpen}
+          onToggle={() => setRightStreamOpen((open) => !open)}
+          emptyTitle="No teammate signal yet"
+          emptyDescription="Waiting for other members' screen, git, or collision events."
+        />
       </SidebarProvider>
-    </div>
+    </SidebarProvider>
   );
 }
 
@@ -645,7 +627,7 @@ function ActivitySidebar({
     <Sidebar
       side={side}
       collapsible="icon"
-      className="border-border/80 bg-sidebar md:!top-[var(--pod-topbar-height)] md:!h-[calc(100svh-var(--pod-topbar-height))]"
+      className="border-border/80 bg-sidebar"
       data-testid={testId}
     >
       <SidebarHeader className="border-b px-3 py-3">
@@ -709,9 +691,7 @@ function ActivitySidebar({
           {events.length ? (
             <div className="flex max-h-[calc(100svh-9rem)] flex-col gap-4 overflow-y-auto pr-1">
               {ACTIVITY_CATEGORIES.map((category) => {
-                const items = events.filter(
-                  (event) => CATEGORY_OF[event.kind] === category.id,
-                );
+                const items = events.filter((event) => CATEGORY_OF[event.kind] === category.id);
                 if (!items.length) return null;
                 const CategoryIcon = category.icon;
                 return (
@@ -721,10 +701,7 @@ function ActivitySidebar({
                       <h3 className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
                         {category.label}
                       </h3>
-                      <Badge
-                        variant="secondary"
-                        className="rounded-md px-1.5 py-0 text-[0.65rem]"
-                      >
+                      <Badge variant="secondary" className="rounded-md px-1.5 py-0 text-[0.65rem]">
                         {items.length}
                       </Badge>
                     </div>
@@ -829,10 +806,7 @@ function ActivityItem({ event }: { event: PodActivityEvent }) {
         )}
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
           <SourceChip source={event.source} />
-          <Badge
-            variant="outline"
-            className="rounded-md px-1.5 py-0 text-[0.68rem] leading-4"
-          >
+          <Badge variant="outline" className="rounded-md px-1.5 py-0 text-[0.68rem] leading-4">
             {KIND_LABEL[event.kind]}
           </Badge>
           {metadata.map((item, index) => (
