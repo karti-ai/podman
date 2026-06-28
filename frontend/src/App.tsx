@@ -177,6 +177,7 @@ export default function App() {
     setRoom(null);
     setJoinedPodId(null);
     sessionStorage.removeItem(SESSION_KEY);
+    void refresh(); // re-sync the list (e.g. if the pod was deleted out from under us)
   }
 
   const showReconnecting = restoring || (joinedPodId !== null && joinedPod === null);
