@@ -108,7 +108,7 @@ flowchart LR
 
   subgraph DO["DigitalOcean droplet — systemd-supervised"]
     WebApi["Caddy + API service<br/>static app · /api · LiveKit tokens"]
-    Agent["Vision agent worker"]
+    Agent["Vision agent worker<br/>Gemini reads each screen frame"]
     Coord["Hermes coordinator<br/>detects clashes · intervenes"]
     PyAgent["Live conversation agent<br/>(Python)"]
   end
