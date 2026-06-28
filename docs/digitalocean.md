@@ -58,6 +58,13 @@ The mirror at `infra/.do/app.yaml` is kept identical for DO UI/import workflows.
 - No HTTP route and no HTTP health check
 - Default room: `POD_ROOM=demo-pod`
 
+### Worker: live conversation agent (Python)
+
+- Source: `agents/podman-live-conversation/`
+- The Gemini Live voice agent (`gemini-3.1-flash-live-preview`), run with `uv`.
+- On the droplet it runs as `podman-live-conversation-agent.service`
+  (`infra/systemd/`). It is separate from the Node services and the TS agent.
+
 ---
 
 ## Required Runtime Environment
@@ -66,11 +73,15 @@ The mirror at `infra/.do/app.yaml` is kept identical for DO UI/import workflows.
 LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
+LIVEKIT_CONVERSATION_AGENT_NAME=podman-live-conversation
 
-GEMINI_API_KEY=...
+GEMINI_API_KEY=...                                  # GOOGLE_API_KEY also accepted
 GEMINI_VISION_MODEL=gemini-2.0-flash
-GEMINI_LIVE_MODEL=gemini-3.1-flash-tts-preview
+GEMINI_LIVE_MODEL=gemini-3.1-flash-tts-preview      # TTS voice
+GEMINI_CONVERSATION_MODEL=gemini-3.1-flash-live-preview
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 GEMINI_TTS_VOICE=Charon
+# GEMINI_MUSIC_MODEL=lyria-3-clip-preview           # optional override
 
 GITHUB_TOKEN=...
 GITHUB_REPO=karti-ai/podman
@@ -83,8 +94,10 @@ PORT=8787
 POD_ROOM=demo-pod
 ```
 
-`VOYAGE_API_KEY` is optional for local/demo fallback. Without it, Mongo exact
-signature recall still works; Atlas Vector Search recall is skipped.
+`VOYAGE_API_KEY` is optional. Without it, Gemini embeddings provide vector
+recall; without any embedding provider, recall degrades to exact signature
+matching. The Lyria background score uses the Gemini Interactions API and the
+same `GEMINI_API_KEY`.
 
 ---
 

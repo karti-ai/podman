@@ -318,30 +318,31 @@ Everything should serve that outcome.
 
 ## Documentation-first enforcement — HARD RULE
 
-**Every line of code must trace back to a task in `docs/PLAN.md` or a spec in `docs/`.**
+**Every line of code must trace back to a spec in `docs/`.**
 
-This is not a guideline. This is a gate.
+This is not a guideline. This is a gate. The canonical specs are
+`docs/gemini.md`, `docs/livekit.md`, `docs/mongodb.md`, `docs/cont_learning.md`,
+`docs/hermes.md`, and `docs/digitalocean.md`. `docs/demo.md` is the demo script.
 
 ### Before writing any code, verify:
 
-1. **Is this task in `docs/PLAN.md`?** Find the exact task number. If it's not there, stop.
-2. **Is the approach consistent with the relevant spec?** Check `docs/gemini.md`, `docs/livekit.md`, `docs/mongodb.md`, `docs/digitalocean.md` as applicable.
-3. **Do the file names and API shapes match what's documented?** If the plan says `backend/src/db/states.ts`, do not create `backend/src/database/engineStates.ts` without updating the spec first.
+1. **Is the approach consistent with the relevant spec?** Check `docs/gemini.md`, `docs/livekit.md`, `docs/mongodb.md`, `docs/cont_learning.md`, `docs/hermes.md`, `docs/digitalocean.md` as applicable.
+2. **Do the file names and API shapes match what's documented?** If a spec says `backend/src/memory/store.ts`, do not create `backend/src/database/engineStates.ts` without updating the spec first.
 
-### If a developer asks for something not in the plan:
+### If a developer asks for something not in the specs:
 
 **Do not write the code.** Instead:
 
-1. Say explicitly: _"This isn't in the current plan. Let me understand what you're trying to do."_
+1. Say explicitly: _"This isn't in the current specs. Let me understand what you're trying to do."_
 2. Ask what problem they're solving and whether it's required for the demo path.
-3. Evaluate whether it fits within scope or replaces something planned.
-4. If it's valid: **update `docs/PLAN.md` and the relevant spec first**, then proceed to code.
-5. If it's scope creep: say so directly and recommend the nearest in-plan alternative.
+3. Evaluate whether it fits within scope or replaces something documented.
+4. If it's valid: **update the relevant spec first**, then proceed to code.
+5. If it's scope creep: say so directly and recommend the nearest in-spec alternative.
 
-### Signs a request is off-plan (stop and consult):
+### Signs a request is off-spec (stop and consult):
 
-- Introducing a new file not mentioned in any task's **Files** list
-- Changing an API signature documented in a spec (`/ingest`, `/health`, `/pods/:podId/token`, `/pods/:podId/state`)
+- Introducing a new file or API route not described in any spec
+- Changing a documented API signature (`/health`, `POST /api/token`, `POST /api/outcome`, `GET /api/pods/:id/...`)
 - Adding a dependency not in the existing `package.json` files without a clear spec reason
 - Building a feature in the **Cut immediately** list
 - Touching another engineer's ownership area without explicit cross-team coordination
@@ -359,10 +360,10 @@ This repo is actively used by **4 engineers at the same time**. Claude sessions 
 ### What this means for how you help
 
 - **Assume other files are actively being edited.** Never refactor code outside the immediate task scope without explicit coordination from the user.
-- **Treat integration points as contracts.** The shared types in `shared/src/` and the API shapes of `POST /ingest`, `GET /pods/:podId/token`, and `GET /pods/:podId/state` are the interfaces between all teammates — do not change their signatures unilaterally.
+- **Treat integration points as contracts.** The shared types in `shared/src/` and the API shapes of `POST /api/token`, `POST /api/outcome`, and the `GET /api/pods/:id/*` routes are the interfaces between all teammates — do not change their signatures unilaterally.
 - **Flag merge risk explicitly** before editing a shared file (e.g., `backend/src/index.ts`, `frontend/src/App.tsx`). Say so, then proceed only if the user confirms.
 - **Prefer additive changes** — new files, new functions — over modifying existing ones. This minimizes merge conflicts in a concurrent team.
-- **When proposing new files**, verify they match the file names listed in the relevant task in `docs/PLAN.md`. Do not invent new paths.
+- **When proposing new files**, verify they match the file names and paths described in the relevant spec in `docs/`. Do not invent new paths.
 
 ---
 

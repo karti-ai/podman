@@ -1,15 +1,24 @@
 # LiveKit Integration Spec
 
-LiveKit is the real-time backbone for PodMan. It handles room presence and voice delivery. It is load-bearing — not decorative.
+Status: active / matches code.
+
+LiveKit is the real-time backbone for PodMan. It carries the **screen-share
+perception input**, the **intervention data channel**, and **all room audio**
+(Gemini TTS escalations, the Lyria score, and the live conversation agent). It is
+load-bearing, not decorative.
 
 ---
 
 ## Room structure
 
-- One LiveKit room per project pod: `room = podId`
-- Engineers join as named participants (e.g. `alice`, `bob`)
-- Hermes joins as `podman-hermes`
-- All participants stay connected for the duration of the session
+- One LiveKit room per pod: `room = podId`.
+- Engineers join as named participants (e.g. `alice`, `bob`).
+- PodMan runs **multiple agent identities** in/around a room:
+  - `podman-hermes` — the main vision + intervention agent (`@livekit/rtc-node`).
+  - `podman-live-conversation` — the Gemini Live voice agent (Python).
+  - short-lived `podman-hermes-job-*` publishers for async job events.
+- A fixed identity matters: a second `podman-hermes` evicts the first and they
+  flap, dropping interventions. systemd keeps exactly one alive in production.
 
 ---
 
@@ -17,100 +26,79 @@ LiveKit is the real-time backbone for PodMan. It handles room presence and voice
 
 **Joining:**
 
-1. PWA calls `POST /pods/:podId/token` → receives `{ token, url }`
-2. LiveKit client connects to the room with the token
-3. PWA publishes screen track via `getDisplayMedia`
-4. PWA sets mic enabled for ambient presence
+1. PWA calls `POST /api/token` with `{ podId, identity }` → `{ token, url }`.
+2. LiveKit client connects with the token.
+3. PWA publishes the screen track via `getDisplayMedia`.
+4. PWA enables mic for ambient presence (used by the conversation agent).
 
 **Receiving:**
 
-- LiveKit client subscribes to remote Hermes audio tracks and attaches them to
-  a hidden audio sink in the DOM.
-- Browser autoplay restrictions still apply. The PWA calls `room.startAudio()`
-  from user gestures such as first room click, `Enable audio`, `Test PodMan
-  voice`, and `Share screen`.
-- PWA also listens for data channel messages from Hermes for UI card updates and
-  `VOICE_CUE` fallback text.
+- Subscribes to remote agent audio tracks (TTS, Lyria, conversation) and attaches
+  them to a hidden audio sink.
+- Browser autoplay restrictions apply: the PWA calls `room.startAudio()` from a
+  user gesture (`Enable audio`, `Test PodMan voice`, `Share screen`, first room
+  click).
+- Listens on the data channel for cards and `VOICE_CUE` fallback text.
 
 **Data channel listener (PWA):**
 
 ```ts
 room.on(RoomEvent.DataReceived, (payload, participant) => {
-  if (participant?.identity !== 'podman-hermes') return;
-  const intervention = JSON.parse(new TextDecoder().decode(payload));
-  // intervention: COLLISION, HERMES_MESSAGE, VOICE_CUE, ACK, or GIT_REPORT
-  appendInterventionToFeed(intervention);
+  if (!participant?.identity.startsWith('podman-')) return;
+  const msg = JSON.parse(new TextDecoder().decode(payload));
+  // msg.type: COLLISION | ACK | GIT_REPORT | VOICE_CUE | HERMES_JOB_EVENT
+  appendInterventionToFeed(msg);
 });
 ```
 
+All data messages share the `podman.intervention` topic (`DATA_TOPIC`).
+
 ---
 
-## Hermes side (PodMan LiveKit participant)
+## Agent side (`podman-hermes`)
 
-**Framework:** `@livekit/rtc-node`
+**Framework:** `@livekit/rtc-node`. **Code:** `backend/src/agent/podman.ts`,
+`backend/src/action/hermes.ts`, `backend/src/voice/live.ts`.
 
-**Startup:**
+1. Subscribes to engineers' screen-share tracks and samples frames for Gemini
+   Vision.
+2. Detects collisions, gates them through the learning policy, then publishes a
+   card/message on the data channel.
+3. For critical collisions, generates Gemini TTS audio and publishes it as a
+   microphone-source audio track, held for the audio duration plus a tail/hold
+   window so subscribers finish playout. Voice publishing logs frame count,
+   estimated duration, queued playout, and hold time for diagnostics.
 
-1. Hermes mints its own token via the same `createPodToken` function with `identity: 'podman-hermes'`
-2. Connects to the configured room as `podman-hermes`
-3. Publishes data-channel cards/messages and Gemini TTS audio tracks
+---
 
-**Voice delivery:**
+## Live conversation agent (`podman-live-conversation`)
 
-1. Urgent intervention text is ready (from Gemini text generation)
-2. Hermes sends a natural-speaking prompt to Gemini TTS
-3. Gemini returns PCM audio using the configured voice
-4. Hermes publishes the audio as a LiveKit microphone-source track
-5. Hermes keeps the track published for the generated audio duration plus tail
-   silence and a hold window. This avoids browser-side cutoff when LiveKit's
-   queued playout signal returns before subscribers finish playing buffered
-   audio.
-6. All participants hear it after browser audio has been unlocked
+**Framework:** LiveKit Agents for Python (`AgentSession`, `function_tool`,
+`google.realtime.RealtimeModel`). **Code:**
+`agents/podman-live-conversation/agent.py`.
 
-**Data channel message (sent alongside audio):**
-
-```ts
-const intervention = {
-  type: 'DEPENDENCY_READY' | 'BLOCKER_DETECTED' | 'DUPLICATE_WORK',
-  message: string,        // the spoken text
-  involvedEngineers: string[],
-  file: string | null,
-  sentAt: string,         // ISO timestamp
-};
-room.localParticipant.publishData(
-  new TextEncoder().encode(JSON.stringify(intervention)),
-  { reliable: true }
-);
-```
+Joins the pod room on demand (`POST /api/pods/:id/live-conversation/start`),
+streams speech-to-speech with Gemini Live, and answers using repo/git/memory
+function tools. It can delegate long tasks to the async Hermes job runner and
+narrate progress. See `docs/hermes.md`.
 
 ---
 
 ## Token endpoint
 
-Already implemented at `POST /api/token`.
-
-Hermes uses the same endpoint. Grants:
+`POST /api/token` mints room tokens for engineers and agents alike. Grants:
 
 - `roomJoin: true`
-- `canPublish: true` (for audio track)
-- `canPublishData: true` (for data channel)
+- `canPublish: true` (audio + screen)
+- `canPublishData: true` (data channel)
 - `canSubscribe: true`
 
----
-
-## Gemini voice model
-
-- Model ID: `gemini-3.1-flash-tts-preview`
-- Default voice: `Charon` (`GEMINI_TTS_VOICE`)
-- Hermes generates Gemini TTS audio and publishes it as a LiveKit audio track.
-- Voice publishing logs generated frame count, estimated duration, queued
-  playout, and the final subscriber hold time for diagnostics.
-- The backend keeps a Gemini Live path for future model availability, but the verified deployment path uses TTS.
+Short-lived job publishers use `canSubscribe: false`.
 
 ---
 
 ## What LiveKit does NOT do in PodMan
 
-- No video tracks from Hermes
-- No mic transcription (not needed for v1)
-- No SFU mixing — standard room behavior is sufficient
+- No video tracks published by agents.
+- No mic transcription outside the live conversation agent.
+- No custom SFU mixing — standard room behavior is sufficient.

@@ -2,9 +2,8 @@
 
 > Owner: graph data + visualization. Status: demo-backed / active.
 > Satisfies the documentation-first gate for the `backend/src/graph/*` and
-> `frontend/src/components/GraphView.tsx` files.
->
-> Canonical module docs live in [`docs/graph-discovery/`](graph-discovery/).
+> `frontend/src/components/GraphView.tsx` files. This file is the canonical
+> graph spec.
 
 ## What this is (and is NOT)
 
