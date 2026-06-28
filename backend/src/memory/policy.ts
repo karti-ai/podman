@@ -1,32 +1,22 @@
 import type { Collision, SuggestedActionKind } from '@podman/shared';
 import type { RecalledCollision } from './vectors.js';
 
-const lastNudgeByPod = new Map<string, number>();
-
-function cooldownMs(): number {
-  return Number(process.env.NUDGE_COOLDOWN_MS ?? '180000');
-}
-
-/** Policy gate: combines severity, exact recall outcomes, and per-pod cooldown. */
-export function shouldIntervene(collision: Collision, prior: RecalledCollision | null): boolean {
-  if (collision.severity === 'info') return false;
-
-  const priorOutcome = prior?.priorOutcome;
-  // Suppress when the identical prior was dismissed (accepted === false). The
-  // former `&& !priorOutcome.wasRealCollision` term was dead code: outcomes are
-  // recorded with wasRealCollision hardcoded true, so the gate never fired and
-  // the 85 real dismissals in Atlas were ignored. Dismissals are the negative
-  // signal per continual-learning/policy.md:41 + spec.md:163. (RSI Step 1)
-  if (priorOutcome && !priorOutcome.accepted) return false;
-
-  const cooldown = cooldownMs();
-  const last = lastNudgeByPod.get(collision.podId) ?? 0;
-  if (cooldown > 0 && Date.now() - last < cooldown) {
-    return false;
-  }
-
-  lastNudgeByPod.set(collision.podId, Date.now());
-  return true;
+/**
+ * Policy gate — suppression fully disabled for the demo.
+ *
+ * Every real collision surfaces an intervention. Accept/Dismiss are still
+ * recorded as outcomes but carry NO gating meaning: dismissing one collision
+ * never silences future ones, and there is no per-pod cooldown throttling
+ * consecutive conflicts. The only filter is severity: `info` collisions are
+ * informational, not actionable, so they don't nudge. The same-collision
+ * single-shot dedupe lives in `PodmanAgent.handle` (activeConflicts), so
+ * removing the cooldown does not cause repeat spam of an unresolved collision.
+ *
+ * (Prior dismissal-based suppression over-generalized: one README discard
+ * permanently muted all README clashes via loose file/vector recall.)
+ */
+export function shouldIntervene(collision: Collision, _prior: RecalledCollision | null): boolean {
+  return collision.severity !== 'info';
 }
 
 /** Preferred action selection based on collision severity and prior accepted actions. */
