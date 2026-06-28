@@ -60,7 +60,7 @@ export class PodMan {
     }
 
     const github = await getGithubState(); // cached
-    const collisions = detectCollisions([...this.contexts.values()], github);
+    const collisions = detectCollisions([...this.contexts.values()], github, gitStates);
     for (const collision of collisions) await this.handle(collision);
   }
 
