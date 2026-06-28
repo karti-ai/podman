@@ -34,7 +34,7 @@ export const WelcomeView = ({
         <WelcomeImage />
 
         <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Voice, vision, images, and music — powered by Gemini 3.1, NanoBanana 2, and Lyria
+          Voice, vision, images, and music — powered by Gemini 3.1 Live, NanoBanana 2, and Lyria
         </p>
 
         <Button

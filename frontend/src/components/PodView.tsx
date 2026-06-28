@@ -116,6 +116,7 @@ export function PodView({
   const [testingVoice, setTestingVoice] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [remoteAudioTracks, setRemoteAudioTracks] = useState(0);
   const [micOn, setMicOn] = useState(false);
   const [leftStreamOpen, setLeftStreamOpen] = useState(() =>
     readStoredBool('podman.myStreamOpen', true),
@@ -146,6 +147,7 @@ export function PodView({
       element.autoplay = true;
       audioElementsRef.current.set(key, element);
       audioRef.current.appendChild(element);
+      setRemoteAudioTracks(audioElementsRef.current.size);
     };
     const removeAudio = (track: RemoteTrack, pub?: RemoteTrackPublication) => {
       const key = pub?.trackSid || track.sid || track.mediaStreamTrack.id;
@@ -153,6 +155,7 @@ export function PodView({
       if (attached) {
         attached.remove();
         audioElementsRef.current.delete(key);
+        setRemoteAudioTracks(audioElementsRef.current.size);
       }
       track.detach().forEach((el) => el.remove());
     };
@@ -165,14 +168,23 @@ export function PodView({
       });
     };
     const onAudio = (track: RemoteTrack, pub: RemoteTrackPublication) => attachAudio(track, pub);
-    const onAudioGone = (track: RemoteTrack, pub: RemoteTrackPublication) => removeAudio(track, pub);
+    const onAudioGone = (track: RemoteTrack, pub: RemoteTrackPublication) =>
+      removeAudio(track, pub);
     const onDisconnected = () => onLeaveRef.current();
     // Browsers block autoplay of incoming audio until a user gesture unlocks it.
     // Surface a button whenever the room can't play sound so PodMan's voice cues
     // are actually heard.
     const onPlaybackChanged = () => setAudioBlocked(!room.canPlaybackAudio);
+    const unlockAudioFromGesture = () => {
+      void room.startAudio().finally(() => setAudioBlocked(!room.canPlaybackAudio));
+    };
     onPlaybackChanged();
     setMicOn(room.localParticipant.isMicrophoneEnabled);
+    window.addEventListener('pointerdown', unlockAudioFromGesture, {
+      once: true,
+      capture: true,
+    });
+    window.addEventListener('keydown', unlockAudioFromGesture, { once: true, capture: true });
 
     room
       .on(RoomEvent.ParticipantConnected, refresh)
@@ -193,8 +205,11 @@ export function PodView({
         .off(RoomEvent.TrackUnsubscribed, onAudioGone)
         .off(RoomEvent.AudioPlaybackStatusChanged, onPlaybackChanged)
         .off(RoomEvent.Disconnected, onDisconnected);
+      window.removeEventListener('pointerdown', unlockAudioFromGesture, { capture: true });
+      window.removeEventListener('keydown', unlockAudioFromGesture, { capture: true });
       audioElementsRef.current.forEach((el) => el.remove());
       audioElementsRef.current.clear();
+      setRemoteAudioTracks(0);
     };
   }, [room, me]);
 
@@ -268,6 +283,8 @@ export function PodView({
     if (!room) return;
     setNote(null);
     try {
+      await room.startAudio().catch(() => {});
+      setAudioBlocked(!room.canPlaybackAudio);
       if (sharing) {
         if (screenTrackRef.current)
           await room.localParticipant.unpublishTrack(screenTrackRef.current);
@@ -585,7 +602,15 @@ export function PodView({
                       <StatusLine
                         label="Audio"
                         value={
-                          beat.on ? (beat.mine ? 'publishing' : `${beat.by} playing`) : 'ready'
+                          audioBlocked
+                            ? 'blocked'
+                            : remoteAudioTracks > 0
+                              ? `${remoteAudioTracks} remote track${remoteAudioTracks === 1 ? '' : 's'}`
+                              : beat.on
+                                ? beat.mine
+                                  ? 'publishing'
+                                  : `${beat.by} playing`
+                                : 'ready'
                         }
                       />
                       <StatusLine label="Agent" value={podmanPresent ? 'watching' : 'waiting'} />

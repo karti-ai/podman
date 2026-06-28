@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # HACK HERE: swap model IDs to experiment
 # ─────────────────────────────────────────────
-REALTIME_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
-IMAGE_MODEL = "gemini-2.5-flash-image"  # Nano Banana
-LYRIA_MODEL = "models/lyria-realtime-exp"
+REALTIME_MODEL = os.getenv("GEMINI_REALTIME_MODEL", "gemini-3.1-flash-live-preview")
+IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")  # Nano Banana 2
+LYRIA_MODEL = os.getenv("GEMINI_LYRIA_MODEL", "models/lyria-realtime-exp")
 
 # ─────────────────────────────────────────────
 # HACK HERE: change the agent's persona
@@ -27,7 +27,7 @@ PERSONA_INSTRUCTIONS = """You are a creative multimodal AI assistant at a Google
 You can see through the user's camera, hear them speak, generate images, and play real-time music.
 
 Your capabilities:
-- generate_image: Create images with Nano Banana (Gemini 2.5 Flash Image). Use this when asked to generate, create, render, or visualize anything.
+- generate_image: Create images with Nano Banana 2 (Gemini 3.1 Flash Image). Use this when asked to generate, create, render, or visualize anything.
 - start_music: Play real-time generative music with Lyria RealTime. Use this for soundtracks, ambience, or any audio atmosphere.
 - stop_music: Stop the current music.
 
@@ -52,7 +52,7 @@ When asked about visuals:
         self._music_stop_event = asyncio.Event()
         self._music_track_pub = None
 
-        # Standard client for image generation (NanoBanana 2)
+        # Standard client for image generation (Nano Banana 2)
         self._image_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
 
         # v1alpha client required for Lyria RealTime
@@ -70,7 +70,7 @@ When asked about visuals:
         context: RunContext,
         prompt: str,
     ) -> str:
-        """Generate an image using NanoBanana 2 and display it on the user's screen.
+        """Generate an image using Nano Banana 2 and display it on the user's screen.
 
         Call this whenever the user asks you to create, generate, render, or visualize something.
 
@@ -281,12 +281,13 @@ async def entrypoint(ctx: agents.JobContext):
 
     await ctx.connect()
 
-    try:
-        await session.generate_reply(
-            instructions="Greet the user. Let them know you can generate images with Nano Banana and play real-time music with Lyria. Mention they can enable their camera for visual context."
-        )
-    except Exception as exc:
-        logger.warning("Initial greeting failed: %s", exc)
+    if REALTIME_MODEL != "gemini-3.1-flash-live-preview":
+        try:
+            await session.generate_reply(
+                instructions="Greet the user. Let them know you can generate images with Nano Banana 2 and play real-time music with Lyria. Mention they can enable their camera for visual context."
+            )
+        except Exception as exc:
+            logger.warning("Initial greeting failed: %s", exc)
 
 
 if __name__ == "__main__":

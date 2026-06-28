@@ -25,7 +25,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   companyName: 'Gemini Hackathon',
   pageTitle: 'Gemini Hacker Starter',
   pageDescription:
-    'Voice, vision, image generation, and real-time music with Gemini 2.5 native audio, Nano Banana, and Lyria',
+    'Voice, vision, image generation, and real-time music with Gemini 3.1 Live, Nano Banana 2, and Lyria',
 
   supportsChatInput: true,
   supportsVideoInput: true,
