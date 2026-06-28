@@ -9,6 +9,7 @@ import {
   EyeIcon,
   GitBranchIcon,
   ExternalLinkIcon,
+  InfoIcon,
   MessageSquareIcon,
   MicIcon,
   MicOffIcon,
@@ -33,6 +34,7 @@ import type {
   MemberWorkHistory,
   MemberWorkHistoryEvent,
   MemberWorkHistoryFile,
+  MemberWorkHistoryRoi,
   Pod,
   PodActivityEvent,
   PodActivityKind,
@@ -1034,6 +1036,7 @@ function WorkHistoryDialog({
 
         {history && !loading && !error && (
           <div className="flex flex-col gap-5">
+            <RoiBand roi={history.roi} />
             <div className="grid gap-2 sm:grid-cols-3">
               <HistoryStat label="Files" value={history.totals.files} />
               <HistoryStat label="Screen logs" value={history.totals.observations} />
@@ -1087,6 +1090,88 @@ function WorkHistoryDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function formatSaved(minutes: number): string {
+  if (minutes < 60) return `~${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `~${h}h ${m}m` : `~${h}h`;
+}
+
+function RoiTooltip({ roi }: { roi: MemberWorkHistoryRoi }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="How rework saved is estimated"
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <InfoIcon className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64">
+        <div className="flex flex-col gap-1">
+          <p className="font-medium">Estimated rework saved</p>
+          {roi.breakdown.length ? (
+            roi.breakdown.map((row) => (
+              <p key={row.label} className="font-mono text-[0.7rem]">
+                {row.count} × {row.minutesEach}m · {row.label}
+              </p>
+            ))
+          ) : (
+            <p className="text-[0.7rem]">No eligible clashes.</p>
+          )}
+          <p className="text-[0.68rem] text-muted-foreground">
+            credit split across engineers · est. only
+          </p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function RoiBand({ roi }: { roi?: MemberWorkHistoryRoi }) {
+  if (!roi || roi.clashesCaught === 0) return null;
+  const conflictFree = roi.totalFiles
+    ? Math.round((roi.conflictFreeFiles / roi.totalFiles) * 100)
+    : 100;
+  return (
+    <section className="rounded-lg border bg-primary/5 p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <p className="font-mono text-2xl font-semibold">{formatSaved(roi.savedMinutes)}</p>
+            <span className="text-sm text-muted-foreground">rework saved</span>
+            <RoiTooltip roi={roi} />
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            estimated · clashes caught pre-commit
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="font-mono text-lg font-medium">{roi.clashesCaught}</p>
+          <p className="text-xs text-muted-foreground">clashes caught early</p>
+        </div>
+      </div>
+      {roi.totalFiles > 0 && (
+        <>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${conflictFree}%` }}
+              aria-label={`${roi.conflictFreeFiles} of ${roi.totalFiles} files conflict-free`}
+            />
+          </div>
+          <p className="mt-1.5 text-[0.68rem] text-muted-foreground">
+            conflict-free: {roi.conflictFreeFiles} of {roi.totalFiles} files ·{' '}
+            {roi.filesDeconflicted} auto-deconflicted
+          </p>
+        </>
+      )}
+    </section>
   );
 }
 

@@ -56,5 +56,6 @@ export type {
   MemberWorkHistory,
   MemberWorkHistoryEvent,
   MemberWorkHistoryFile,
+  MemberWorkHistoryRoi,
   MemberWorkHistorySource,
 } from './member-history.js';

@@ -1,4 +1,10 @@
-import type { EngineerContext, MemberWorkHistory, MemberWorkHistoryFile } from '@podman/shared';
+import type {
+  Collision,
+  EngineerContext,
+  MemberWorkHistory,
+  MemberWorkHistoryFile,
+  MemberWorkHistoryRoi,
+} from '@podman/shared';
 import { getDb } from '../memory/db.js';
 import { parseGitStatusPath } from '../graph/live.js';
 
@@ -80,7 +86,7 @@ export async function getMemberWorkHistory(
   const limit = Math.min(Math.max(options.limit ?? 80, 10), 200);
   const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
 
-  const [observations, gitState] = await Promise.all([
+  const [observations, gitState, collisions, interventions] = await Promise.all([
     db
       .collection<EngineerContext>('observations')
       .find({ podId, observedAt: { $gte: since } }, { projection: { _id: 0 } })
@@ -91,6 +97,16 @@ export async function getMemberWorkHistory(
       podId,
       name: { $regex: `^${member.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
     }),
+    db
+      .collection<Collision>('collisions')
+      .find({ podId, detectedAt: { $gte: since } }, { projection: { _id: 0 } })
+      .sort({ detectedAt: -1 })
+      .limit(200)
+      .toArray(),
+    db
+      .collection<{ collisionId: string }>('interventions')
+      .find({ podId }, { projection: { collisionId: 1, _id: 0 } })
+      .toArray(),
   ]);
 
   const files = new Map<string, FileAccumulator>();
@@ -158,6 +174,9 @@ export async function getMemberWorkHistory(
 
   timeline.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
+  const interventionIds = new Set(interventions.map((i) => i.collisionId));
+  const roi = computeRoi(member, collisions, interventionIds, gitState?.changedFiles?.length ?? 0);
+
   return {
     podId,
     member,
@@ -170,5 +189,56 @@ export async function getMemberWorkHistory(
     },
     files: fileRows,
     timeline: timeline.slice(0, limit),
+    roi,
+  };
+}
+
+function computeRoi(
+  member: string,
+  collisions: Collision[],
+  interventionCollisionIds: Set<string>,
+  changedFileCount: number,
+): MemberWorkHistoryRoi {
+  const involved = (c: Collision) =>
+    c.engineers?.some((e) => sameMember(e, member)) ||
+    sameMember(c.researcher, member) ||
+    sameMember(c.editor, member);
+
+  const eligible = collisions.filter(
+    (c) =>
+      involved(c) &&
+      interventionCollisionIds.has(c.id) &&
+      (c.gitOverlap === true || c.severity === 'critical'),
+  );
+
+  const weightOf = (c: Collision): { label: string; minutes: number } => {
+    if (c.overlapKind === 'research') return { label: 'research overlap', minutes: 10 };
+    if (c.severity === 'critical') return { label: 'critical same-file', minutes: 45 };
+    if (c.severity === 'warn') return { label: 'warn same-file', minutes: 20 };
+    return { label: 'info same-file', minutes: 10 };
+  };
+
+  let savedMinutes = 0;
+  const groups = new Map<string, { count: number; minutesEach: number }>();
+  for (const c of eligible) {
+    const { label, minutes } = weightOf(c);
+    savedMinutes += minutes / Math.max(1, c.engineers?.length ?? 1);
+    const g = groups.get(label) ?? { count: 0, minutesEach: minutes };
+    g.count += 1;
+    groups.set(label, g);
+  }
+
+  const filesDeconflicted = new Set(eligible.map((c) => c.file)).size;
+  return {
+    savedMinutes: Math.round(savedMinutes),
+    clashesCaught: eligible.length,
+    filesDeconflicted,
+    conflictFreeFiles: Math.max(0, changedFileCount - filesDeconflicted),
+    totalFiles: changedFileCount,
+    breakdown: [...groups.entries()].map(([label, g]) => ({
+      label,
+      count: g.count,
+      minutesEach: g.minutesEach,
+    })),
   };
 }
