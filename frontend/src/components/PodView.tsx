@@ -150,112 +150,200 @@ export function PodView({
   }
 
   const liveCount = participants.length;
+  const podmanPresent = participants.some((p) => p.name.toLowerCase() === 'podman');
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-100">{team.name}</h2>
-          <p className="text-xs text-slate-500">{team.repo}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-2xl font-semibold text-slate-950">{team.name}</h2>
+            <span
+              className={`rounded-full px-2 py-1 text-xs font-medium ${
+                room
+                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                  : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+              }`}
+            >
+              {room ? 'live room' : 'local'}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">{team.repo}</p>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+            Presence, media controls, and intervention state for this pod.
+          </p>
         </div>
         <button
           onClick={onLeave}
-          className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
         >
           Leave
         </button>
       </header>
 
       {devMode && (
-        <p className="rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
-          DEV MODE — LiveKit not configured, so this is a local-only mock (no real room).
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Dev mode: LiveKit is not configured, so this is a local-only mock.
         </p>
       )}
 
-      {/* Connectivity test controls */}
-      <section className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-        <button
-          onClick={toggleBeat}
-          disabled={!room}
-          className={`rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${
-            playingBeat ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500'
-          }`}
-        >
-          {playingBeat ? '⏹ Stop beat' : '▶ Play beat'}
-        </button>
-        <button
-          onClick={toggleScreen}
-          disabled={!room}
-          className="rounded-md border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
-        >
-          {sharing ? '🛑 Stop sharing' : '📺 Share my screen'}
-        </button>
-        <span className="ml-auto text-xs text-slate-400">
-          {playingBeat
-            ? '🔊 broadcasting beat to the pod'
-            : 'press “Play beat” — everyone should hear it'}
-        </span>
+      <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_auto] md:items-center">
+        <div>
+          <p className="text-xs font-medium text-slate-500">Broadcast controls</p>
+          <p className="mt-1 text-sm text-slate-600">Audio, screen, and room signal.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={toggleBeat}
+            disabled={!room}
+            className={`rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50 ${
+              playingBeat
+                ? 'bg-red-600 text-white hover:bg-red-500'
+                : 'bg-emerald-600 text-white hover:bg-emerald-500'
+            }`}
+          >
+            {playingBeat ? 'Stop beat' : 'Play beat'}
+          </button>
+          <button
+            onClick={toggleScreen}
+            disabled={!room}
+            className="rounded-md border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {sharing ? 'Stop sharing' : 'Share screen'}
+          </button>
+        </div>
       </section>
-      {note && <p className="text-sm text-amber-400">{note}</p>}
+      {note && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          {note}
+        </p>
+      )}
 
-      <div className="grid gap-6 md:grid-cols-[1fr_300px]">
-        {/* Live participants */}
-        <section>
-          <h3 className="mb-3 text-sm font-medium text-slate-400">In the room now ({liveCount})</h3>
+      <div className="grid gap-4 md:grid-cols-4">
+        <RoomMetric label="Participants" value={liveCount} />
+        <RoomMetric label="Screen share" value={sharing ? 'on' : 'off'} />
+        <RoomMetric label="Audio test" value={playingBeat ? 'on' : 'idle'} />
+        <RoomMetric label="PodMan" value={podmanPresent ? 'online' : 'waiting'} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-950">Room presence</h3>
+              <p className="text-sm text-slate-500">Live participants and speaking state.</p>
+            </div>
+            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs text-slate-700 ring-1 ring-slate-200">
+              {liveCount} connected
+            </span>
+          </div>
           {liveCount === 0 ? (
-            <p className="text-sm text-slate-500">Connecting…</p>
+            <p className="text-sm text-slate-500">Connecting...</p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {participants.map((p) => (
                 <div
                   key={p.id}
-                  className={`flex items-center gap-3 rounded-lg border p-3 transition ${
+                  className={`flex min-h-20 items-center gap-3 rounded-lg border p-3 transition ${
                     p.speaking
-                      ? 'border-emerald-400 bg-emerald-950/30 ring-1 ring-emerald-400/50'
-                      : 'border-slate-800 bg-slate-900/40'
+                      ? 'border-emerald-200 bg-emerald-50 ring-1 ring-emerald-100'
+                      : 'border-slate-200 bg-slate-50'
                   }`}
                 >
-                  <Avatar name={p.name} size={36} ring={p.isLocal} />
+                  <Avatar name={p.name} size={38} ring={p.isLocal} />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-200">{p.name}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="truncate text-sm font-semibold text-slate-950">{p.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
                       {p.isLocal ? 'you' : 'connected'}
-                      {p.speaking ? ' · 🔊' : ''}
+                      {p.speaking ? ' - speaking' : ''}
                     </p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-          <p className="mt-3 text-xs text-slate-600">
-            Pod roster: {team.members.join(', ') || '—'}
+          <p className="mt-4 text-xs leading-5 text-slate-600">
+            Pod roster: {team.members.join(', ') || '-'}
           </p>
         </section>
 
-        {/* PodMan panel */}
-        <aside className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🛰️</span>
-            <h3 className="font-semibold text-slate-100">PodMan</h3>
-            <span className="ml-auto flex items-center gap-1 text-xs text-emerald-400">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" /> watching
+        <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-slate-500">Intervention rail</p>
+              <h3 className="mt-1 text-base font-semibold text-slate-950">PodMan</h3>
+            </div>
+            <span
+              className={`rounded-full px-2 py-1 text-xs font-medium ${
+                podmanPresent
+                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                  : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200'
+              }`}
+            >
+              {podmanPresent ? 'watching' : 'waiting'}
             </span>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
-            {liveCount} participant{liveCount === 1 ? '' : 's'} connected. Watching for collisions
-            before push.
-          </p>
-          <div className="mt-4 border-t border-slate-800 pt-4">
-            <h4 className="mb-2 text-xs font-medium text-slate-400">Interventions</h4>
-            <div className="rounded-lg border border-dashed border-slate-800 px-3 py-6 text-center text-xs text-slate-600">
-              No collisions detected.
-            </div>
+
+          <div className="mt-5 space-y-3">
+            <InterventionCard
+              state="ready"
+              title="Live inference"
+              text={
+                sharing ? 'Screen frames available to the agent.' : 'Waiting for screen signal.'
+              }
+            />
+            <InterventionCard
+              state="quiet"
+              title="Collision detector"
+              text="No same-file collision has been detected in this room."
+            />
+            <InterventionCard
+              state="quiet"
+              title="Escalation policy"
+              text="Cards first; voice only when urgency crosses the threshold."
+            />
           </div>
         </aside>
       </div>
 
-      {/* hidden sink for remote audio elements */}
       <div ref={audioRef} className="hidden" />
+    </div>
+  );
+}
+
+function RoomMetric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
+      <p className="text-[11px] font-medium text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function InterventionCard({
+  state,
+  title,
+  text,
+}: {
+  state: 'ready' | 'quiet';
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-950">{title}</p>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${
+            state === 'ready'
+              ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+              : 'bg-white text-slate-500 ring-1 ring-slate-200'
+          }`}
+        >
+          {state}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
     </div>
   );
 }

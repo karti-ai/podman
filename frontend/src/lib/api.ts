@@ -2,6 +2,13 @@ import type { InterventionOutcome, Pod, PodInput } from '@podman/shared';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
 
+export interface MemoryStats {
+  observations: number;
+  collisions: number;
+  interventions: number;
+  outcomes: number;
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -44,6 +51,10 @@ export async function listPods(): Promise<Pod[]> {
 /** Display names currently connected per pod id (= LiveKit room name). */
 export async function getPresence(): Promise<Record<string, string[]>> {
   return json(await fetch(`${BACKEND_URL}/api/presence`));
+}
+
+export async function getMemoryStats(): Promise<MemoryStats> {
+  return json(await fetch(`${BACKEND_URL}/api/memory/stats`));
 }
 
 export async function createPod(input: PodInput): Promise<Pod> {

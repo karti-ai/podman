@@ -9,12 +9,15 @@ import { PodView } from './components/PodView.js';
 
 const SESSION_KEY = 'podman.session';
 
+const fmt = new Intl.NumberFormat('en', { notation: 'compact' });
+
 export default function App() {
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [presence, setPresence] = useState<Record<string, string[]>>({});
+  const [memory, setMemory] = useState<api.MemoryStats | null>(null);
 
   // join state — keep the id and derive the pod so it never goes stale
   const [joinedPodId, setJoinedPodId] = useState<string | null>(null);
@@ -28,7 +31,14 @@ export default function App() {
   async function refresh() {
     setLoading(true);
     try {
-      setPods(await api.listPods());
+      const [nextPods, nextPresence, nextMemory] = await Promise.all([
+        api.listPods(),
+        api.getPresence().catch(() => presence),
+        api.getMemoryStats().catch(() => memory),
+      ]);
+      setPods(nextPods);
+      setPresence(nextPresence);
+      setMemory(nextMemory);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -69,8 +79,14 @@ export default function App() {
     let alive = true;
     const tick = async () => {
       try {
-        const p = await api.getPresence();
-        if (alive) setPresence(p);
+        const [p, m] = await Promise.all([
+          api.getPresence(),
+          api.getMemoryStats().catch(() => memory),
+        ]);
+        if (alive) {
+          setPresence(p);
+          setMemory(m);
+        }
       } catch {
         /* presence is best-effort */
       }
@@ -181,72 +197,229 @@ export default function App() {
   }
 
   const showReconnecting = restoring || (joinedPodId !== null && joinedPod === null);
+  const liveNames = Array.from(new Set(Object.values(presence).flat()));
+  const liveTotal = liveNames.length;
+  const totalMembers = pods.reduce((sum, p) => sum + p.members.length, 0);
+  const activeRooms = Object.values(presence).filter((names) => names.length > 0).length;
+  const podManOnline = liveNames.some((name) => name.toLowerCase() === 'podman');
+  const latestActivity = memory
+    ? memory.observations + memory.collisions + memory.interventions + memory.outcomes
+    : 0;
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-5xl px-4 py-8 sm:px-6">
-      <header className="mb-8 flex items-center gap-3">
-        <span className="text-3xl">🛰️</span>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-100">PodMan</h1>
-          <p className="text-sm text-slate-400">
-            The teammate that sees what git can&apos;t — collisions caught before you push.
-          </p>
-        </div>
-      </header>
-
-      {joinedPod ? (
-        <PodView team={joinedPod} me={member} room={room} devMode={devMode} onLeave={handleLeave} />
-      ) : showReconnecting ? (
-        <div className="flex flex-col items-start gap-3">
-          <p className="text-sm text-slate-400">Reconnecting to your pod…</p>
-          <button className="text-xs text-slate-500 hover:text-slate-300" onClick={handleLeave}>
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <main className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-slate-400">
-              Pods {loading ? '…' : `(${pods.length})`}
-            </h2>
-            <button
-              className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-50"
-              onClick={() => void refresh()}
-              disabled={loading}
-            >
-              ↻ Refresh
-            </button>
+    <div className="min-h-screen bg-[#f5f5f7] text-slate-950">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-5 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-950 shadow-sm">
+                PM
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500">Live team coordination</p>
+                <h1 className="text-3xl font-semibold text-slate-950">PodMan</h1>
+              </div>
+            </div>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+              Active work, team memory, and coordination signals in one quiet workspace.
+            </p>
           </div>
 
-          {error && (
-            <p className="rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
-          )}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
+            <Metric label="Live now" value={fmt.format(liveTotal)} tone="green" />
+            <Metric label="Live rooms" value={fmt.format(activeRooms)} tone="blue" />
+            <Metric label="Roster" value={fmt.format(totalMembers)} tone="slate" />
+            <Metric label="Memory" value={fmt.format(latestActivity)} tone="amber" />
+          </div>
+        </header>
 
-          {loading ? (
-            <p className="text-sm text-slate-500">Loading pods…</p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {pods.map((pod) => (
-                <PodCard
-                  key={pod.id}
-                  pod={pod}
-                  busy={pending.has(pod.id)}
-                  presence={presence[pod.id] ?? []}
-                  onJoin={handleJoin}
-                  onAddAndJoin={handleAddAndJoin}
-                  onAddMember={handleAddMember}
-                  onRemoveMember={handleRemoveMember}
-                  onUpdate={handleUpdate}
-                  onDelete={handleDelete}
+        <div className="grid flex-1 gap-5 py-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="min-w-0">
+            {joinedPod ? (
+              <PodView
+                team={joinedPod}
+                me={member}
+                room={room}
+                devMode={devMode}
+                onLeave={handleLeave}
+              />
+            ) : showReconnecting ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-sm text-slate-600">Reconnecting to your pod...</p>
+                <button
+                  className="mt-3 rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                  onClick={handleLeave}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <main className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-950">Team workspaces</h2>
+                    <p className="text-sm text-slate-500">
+                      Pods, presence, and intervention state.
+                    </p>
+                  </div>
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                    onClick={() => void refresh()}
+                    disabled={loading}
+                  >
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {error && (
+                  <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {error}
+                  </p>
+                )}
+
+                {loading ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <SkeletonCard />
+                    <SkeletonCard />
+                  </div>
+                ) : (
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {pods.map((pod) => (
+                      <PodCard
+                        key={pod.id}
+                        pod={pod}
+                        busy={pending.has(pod.id)}
+                        presence={presence[pod.id] ?? []}
+                        onJoin={handleJoin}
+                        onAddAndJoin={handleAddAndJoin}
+                        onAddMember={handleAddMember}
+                        onRemoveMember={handleRemoveMember}
+                        onUpdate={handleUpdate}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                    <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
+                  </div>
+                )}
+              </main>
+            )}
+          </section>
+
+          <aside className="flex flex-col gap-4">
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-slate-500">Agent state</p>
+                  <h2 className="mt-1 text-base font-semibold text-slate-950">PodMan signal</h2>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-1 text-xs font-medium ${
+                    podManOnline
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                  }`}
+                >
+                  {podManOnline ? 'online' : 'standby'}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <SignalRow
+                  label="Screen/IDE stream"
+                  state={podManOnline ? 'watching' : 'waiting'}
                 />
-              ))}
-              <CreatePodForm busy={pending.has('new')} onCreate={handleCreate} />
-            </div>
-          )}
-        </main>
-      )}
+                <SignalRow label="Local git truth" state="scheduled" />
+                <SignalRow
+                  label="Team memory"
+                  state={memory && latestActivity > 0 ? 'learning' : 'ready'}
+                />
+                <SignalRow label="Urgency routing" state="card first" />
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-slate-500">Intervention model</p>
+              <div className="mt-4 space-y-3">
+                <TimelineItem
+                  title="Observe"
+                  text="Live room presence plus screen and git signals."
+                />
+                <TimelineItem
+                  title="Compare"
+                  text="Detect same-file, ownership, and stale path risk."
+                />
+                <TimelineItem
+                  title="Route"
+                  text="Small card first, Hermes/voice only when urgent."
+                />
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-slate-500">Live roster</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {liveNames.length ? (
+                  liveNames.map((name) => (
+                    <span
+                      key={name}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700"
+                    >
+                      {name}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-slate-500">No live participants yet.</span>
+                )}
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone: string }) {
+  const toneClass =
+    tone === 'green'
+      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+      : tone === 'blue'
+        ? 'text-blue-700 bg-blue-50 border-blue-200'
+        : tone === 'amber'
+          ? 'text-amber-700 bg-amber-50 border-amber-200'
+          : 'text-slate-700 bg-white border-slate-200';
+  return (
+    <div className={`rounded-lg border px-3 py-2 shadow-sm ${toneClass}`}>
+      <p className="text-[11px] font-medium opacity-70">{label}</p>
+      <p className="mt-1 text-xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function SignalRow({ label, state }: { label: string; state: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+      <span className="text-sm text-slate-700">{label}</span>
+      <span className="text-xs font-medium text-blue-700">{state}</span>
+    </div>
+  );
+}
+
+function TimelineItem({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="border-l border-blue-200 pl-3">
+      <p className="text-sm font-medium text-slate-900">{title}</p>
+      <p className="mt-0.5 text-xs leading-5 text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div className="h-56 animate-pulse rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="h-5 w-1/2 rounded bg-slate-100" />
+      <div className="mt-3 h-3 w-2/3 rounded bg-slate-100" />
+      <div className="mt-8 h-24 rounded bg-slate-50" />
     </div>
   );
 }
