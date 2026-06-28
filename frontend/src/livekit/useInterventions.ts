@@ -46,10 +46,16 @@ export function useInterventions(room: Room | null) {
         accepted,
         recordedAt: new Date().toISOString(),
       });
+      await room?.localParticipant.publishData(
+        new TextEncoder().encode(
+          JSON.stringify({ type: 'ACK', interventionId: active.id, status }),
+        ),
+        { reliable: true, topic: DATA_TOPIC },
+      );
       setActive(null);
       return status;
     },
-    [active],
+    [active, room],
   );
 
   return { active, hermes, voiceCue, actionUrl, respond };

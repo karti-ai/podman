@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { config as loadEnv } from 'dotenv';
 
 const image = process.env.VERIFY_CONTAINER_IMAGE ?? 'podman-backend';
+const runtime = process.env.VERIFY_CONTAINER_RUNTIME ?? 'docker';
 const port = Number(process.env.VERIFY_CONTAINER_PORT ?? 8799);
 const baseUrl = `http://127.0.0.1:${port}`;
 const runId = `${process.pid}-${Date.now()}`;
@@ -21,14 +22,19 @@ const containerEnv = {
   LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY ?? 'verify-key',
   LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET ?? 'verify-secret',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? 'verify-gemini',
+  GEMINI_VISION_MODEL: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.0-flash',
+  GEMINI_LIVE_MODEL: process.env.GEMINI_LIVE_MODEL ?? 'gemini-3.1-flash-tts-preview',
+  GEMINI_EMBEDDING_MODEL: process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-001',
   GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? 'verify-github',
   GITHUB_REPO: process.env.GITHUB_REPO ?? 'karti-ai/podman',
   MONGODB_URI: process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/podman',
+  VOYAGE_API_KEY: process.env.VOYAGE_API_KEY ?? '',
+  VOYAGE_EMBEDDING_MODEL: process.env.VOYAGE_EMBEDDING_MODEL ?? 'voyage-4-lite',
 };
 
-function runPodman(args, options = {}) {
+function runContainer(args, options = {}) {
   return new Promise((resolve) => {
-    const child = spawn('podman', args, {
+    const child = spawn(runtime, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       ...options,
     });
@@ -61,12 +67,15 @@ function fail(message) {
 }
 
 async function assertPodmanAvailable() {
-  const result = await runPodman(['--version']);
-  if (result.code !== 0) fail(`podman is not available: ${result.stderr.trim()}`);
+  const result = await runContainer(['--version']);
+  if (result.code !== 0) fail(`${runtime} is not available: ${result.stderr.trim()}`);
 }
 
 async function assertImageExists() {
-  const result = await runPodman(['image', 'exists', image]);
+  const result =
+    runtime === 'podman'
+      ? await runContainer(['image', 'exists', image])
+      : await runContainer(['image', 'inspect', image]);
   if (result.code !== 0) {
     fail(
       `container image "${image}" does not exist locally; build it before running this verifier`,
@@ -75,18 +84,23 @@ async function assertImageExists() {
 }
 
 async function removeContainer(name) {
-  await runPodman(['rm', '-f', name]);
+  await runContainer(['rm', '-f', name]);
 }
 
 async function startContainer(name, extraEnv) {
   await removeContainer(name);
-  const result = await runPodman([
+  const networkArgs =
+    runtime === 'podman'
+      ? ['--network', 'host']
+      : extraEnv.PODMAN_PROCESS === 'server'
+        ? ['--publish', `127.0.0.1:${port}:${port}`]
+        : [];
+  const result = await runContainer([
     'run',
     '--detach',
     '--name',
     name,
-    '--network',
-    'host',
+    ...networkArgs,
     ...envArgs(extraEnv),
     image,
   ]);
@@ -96,7 +110,7 @@ async function startContainer(name, extraEnv) {
 }
 
 async function stopContainer(name) {
-  await runPodman(['stop', '--time', '3', name]);
+  await runContainer(['stop', '--time', '3', name]);
   await removeContainer(name);
 }
 
@@ -125,7 +139,7 @@ async function waitForApi() {
     }
     await delay(500);
   }
-  const logs = await runPodman(['logs', apiContainer]);
+  const logs = await runContainer(['logs', apiContainer]);
   fail(
     `API container did not become healthy at ${baseUrl}: ${lastError}\n${logs.stdout}${logs.stderr}`,
   );
@@ -154,11 +168,11 @@ async function verifyAgentContainer() {
 
   let output = '';
   for (let i = 0; i < 60; i++) {
-    const logs = await runPodman(['logs', agentContainer]);
+    const logs = await runContainer(['logs', agentContainer]);
     output = `${logs.stdout}${logs.stderr}`;
     if (output.includes('podman-hermes joined room')) return;
 
-    const inspect = await runPodman([
+    const inspect = await runContainer([
       'inspect',
       '--format',
       '{{.State.Running}} {{.State.ExitCode}}',
@@ -182,10 +196,17 @@ try {
     JSON.stringify(
       {
         ok: true,
+        runtime,
         image,
         baseUrl,
         containers: [apiContainer, agentContainer],
-        checks: ['image-exists', 'api-health', 'api-pods', 'agent-joined-room'],
+        checks: [
+          'image-exists',
+          'api-health',
+          'api-pods',
+          'agent-joined-room',
+          'gemini-model-envs',
+        ],
       },
       null,
       2,

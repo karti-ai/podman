@@ -95,6 +95,17 @@ Build once:
 docker build -f infra/Dockerfile -t podman-backend .
 ```
 
+Or use the repository script and verifier:
+
+```bash
+pnpm build:container
+pnpm verify:containers
+```
+
+`verify:containers` uses Docker by default to match `build:container`. To verify
+against a Podman image store instead, run
+`VERIFY_CONTAINER_RUNTIME=podman pnpm verify:containers`.
+
 The image entrypoint runs `node backend/dist/server.js` when
 `PODMAN_PROCESS=server`, and `node backend/dist/agent.js` when
 `PODMAN_PROCESS=agent`. Do not run the combined Hermes supervisor inside App

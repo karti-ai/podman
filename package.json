@@ -26,10 +26,11 @@
     "hermes:install": "node scripts/install-hermes-ops.mjs",
     "healthcheck:public": "node scripts/healthcheck-public.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm verify:backend && pnpm verify:frontend",
-    "verify:full": "pnpm verify && pnpm build:container && pnpm verify:containers",
+    "verify:full": "pnpm verify && pnpm verify:infra && pnpm build:container && pnpm verify:containers",
     "verify:backend": "node scripts/verify-backend.mjs",
     "verify:containers": "node scripts/verify-containers.mjs",
     "verify:frontend": "node scripts/verify-frontend.mjs",
+    "verify:infra": "node scripts/verify-infra.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

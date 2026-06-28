@@ -4,7 +4,12 @@ import { DATA_TOPIC } from '@podman/shared';
 import { analyzeFrame } from '../vision/gemini.js';
 import { detectCollisions } from '../collision/detector.js';
 import { getGithubState } from '../github/client.js';
-import { recordObservation, recordCollision, recordIntervention } from '../memory/store.js';
+import {
+  recordObservation,
+  recordCollision,
+  recordIntervention,
+  updateInterventionStatus,
+} from '../memory/store.js';
 import { getGitStates } from '../memory/db.js';
 import { recallSimilar } from '../memory/vectors.js';
 import { shouldIntervene, preferredAction } from '../memory/policy.js';
@@ -30,6 +35,7 @@ export class PodMan {
           if (c)
             c.hasUnpushedChanges = msg.report.unpushedCount > 0 || msg.report.dirtyFiles.length > 0;
         }
+        if (msg.type === 'ACK') void updateInterventionStatus(msg.interventionId, msg.status);
       } catch {
         /* ignore malformed */
       }

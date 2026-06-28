@@ -1,4 +1,10 @@
-import type { EngineerContext, Collision, Intervention, InterventionOutcome } from '@podman/shared';
+import type {
+  EngineerContext,
+  Collision,
+  Intervention,
+  InterventionOutcome,
+  InterventionStatus,
+} from '@podman/shared';
 import { collections } from './db.js';
 import { enrichCollisionMemory } from './vectors.js';
 
@@ -30,6 +36,15 @@ export async function recordCollision(collision: Collision): Promise<void> {
 export async function recordIntervention(intervention: Intervention): Promise<void> {
   await persist('intervention', async () =>
     (await collections()).interventions.insertOne({ ...intervention }),
+  );
+}
+
+export async function updateInterventionStatus(
+  interventionId: string,
+  status: InterventionStatus,
+): Promise<void> {
+  await persist('intervention ack', async () =>
+    (await collections()).interventions.updateOne({ id: interventionId }, { $set: { status } }),
   );
 }
 

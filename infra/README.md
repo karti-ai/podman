@@ -24,6 +24,16 @@ docker run --env-file backend/.env -e PODMAN_PROCESS=server -p 8787:8787 podman-
 docker run --env-file backend/.env -e PODMAN_PROCESS=agent podman-backend
 ```
 
+The automated check uses Docker by default, matching `pnpm build:container`:
+
+```bash
+pnpm build:container
+pnpm verify:containers
+```
+
+Set `VERIFY_CONTAINER_RUNTIME=podman` to run the same verifier against a Podman
+image store.
+
 ## Local production services
 
 On the demo droplet, serve the API and worker with systemd instead of tmux:
