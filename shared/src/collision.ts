@@ -16,6 +16,14 @@ export interface Collision {
   severity: CollisionSeverity;
   /** Snapshot of relevant GitHub state at detection time. */
   githubState?: GithubStateSnapshot;
+  /**
+   * Git ground-truth overlap captured AT detection time, while engineer_states
+   * are still fresh: true when every involved engineer had `file` in their git
+   * changedFiles. Read as the authoritative wasRealCollision evidence at outcome
+   * time, so a late click, a stale sidecar, or the engineer_states freshness TTL
+   * cannot retroactively zero it out.
+   */
+  gitOverlap?: boolean;
   detectedAt: string;
 }
 

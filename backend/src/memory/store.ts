@@ -96,15 +96,22 @@ export async function deriveWasRealCollision(outcome: InterventionOutcome): Prom
   try {
     const c = await collections();
     const collision = await c.collisions.findOne({ id: outcome.collisionId });
-    if (!collision || !Array.isArray(collision.engineers) || collision.engineers.length < 2) {
-      return false;
-    }
+    if (!collision) return false;
+    // Prefer the overlap evidence captured at detection time (fresh git state):
+    // immune to late clicks, stale sidecars, and the engineer_states TTL.
+    if (typeof collision.gitOverlap === 'boolean') return collision.gitOverlap;
+    // Fallback for collisions detected before gitOverlap was captured: re-derive
+    // from latest git state, matching engineers on case/whitespace-canonical names.
+    if (!Array.isArray(collision.engineers) || collision.engineers.length < 2) return false;
     const target = comparableFile(collision.file);
     if (!target) return false;
-    const gitStates = await getGitStates(outcome.podId);
-    const touchesTarget = (name: string): boolean =>
-      (gitStates.get(name)?.changedFiles ?? []).some((f) => comparableFile(f) === target);
-    return collision.engineers.every(touchesTarget);
+    const byCanon = new Map<string, string[]>();
+    for (const [name, st] of await getGitStates(outcome.podId)) {
+      byCanon.set(name.trim().toLowerCase(), st.changedFiles);
+    }
+    return collision.engineers.every((e) =>
+      (byCanon.get(e.trim().toLowerCase()) ?? []).some((f) => comparableFile(f) === target),
+    );
   } catch (err) {
     console.error(`[memory] wasRealCollision verifier failed: ${(err as Error).message}`);
     return false;

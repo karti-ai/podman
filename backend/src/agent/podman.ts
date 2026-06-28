@@ -9,10 +9,41 @@ import {
   recordIntervention,
   updateInterventionStatus,
 } from '../memory/store.js';
-import { getGitStates } from '../memory/db.js';
+import { getGitStates, type GitState } from '../memory/db.js';
 import { recallSimilar } from '../memory/vectors.js';
 import { shouldIntervene, preferredAction } from '../memory/policy.js';
 import { publishHermesIntervention } from '../action/hermes.js';
+
+/** Strip a git-status prefix ("M ", "?? ") and reduce a path to its lowercased
+ *  basename — matches comparableFile() in memory/store.ts so keys line up. */
+function comparableBasename(raw?: string): string {
+  return (
+    (raw ?? '')
+      .trim()
+      .replace(/^(\?\?|[MADRCU!]{1,2})\s+/, '')
+      .split(/[\\/]/)
+      .pop()
+      ?.toLowerCase() ?? ''
+  );
+}
+
+/** Canonicalize an engineer name for case/whitespace-insensitive matching, so
+ *  "Karti" and "karti" resolve to the same engineer's git state. */
+function canonicalName(raw?: string): string {
+  return (raw ?? '').trim().toLowerCase();
+}
+
+/** Git ground truth: do ALL involved engineers currently have the collided file
+ *  in their changedFiles? Computed at detection time while git state is fresh. */
+function engineersOverlapOnFile(collision: Collision, gitStates: Map<string, GitState>): boolean {
+  const target = comparableBasename(collision.file);
+  if (!target || collision.engineers.length < 2) return false;
+  const byCanon = new Map<string, string[]>();
+  for (const [name, st] of gitStates) byCanon.set(canonicalName(name), st.changedFiles);
+  return collision.engineers.every((e) =>
+    (byCanon.get(canonicalName(e)) ?? []).some((f) => comparableBasename(f) === target),
+  );
+}
 
 export class PodMan {
   private contexts = new Map<string, EngineerContext>();
@@ -75,6 +106,12 @@ export class PodMan {
       if (!current.has(key)) this.activeConflicts.delete(key);
     }
 
+    // Capture git ground-truth overlap now, while engineer_states are fresh, so
+    // the outcome-time verifier never depends on a stale sidecar or a late click.
+    for (const collision of collisions) {
+      collision.gitOverlap = engineersOverlapOnFile(collision, gitStates);
+    }
+
     for (const collision of collisions) await this.handle(collision);
   }
 
@@ -85,14 +122,7 @@ export class PodMan {
    * basename.
    */
   private conflictKey(collision: Collision): string {
-    return (
-      (collision.file ?? '')
-        .trim()
-        .replace(/^(\?\?|[MADRCU!]{1,2})\s+/, '')
-        .split(/[\\/]/)
-        .pop()
-        ?.toLowerCase() ?? ''
-    );
+    return comparableBasename(collision.file);
   }
 
   private async handle(collision: Collision): Promise<void> {
