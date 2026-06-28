@@ -509,11 +509,26 @@ no schema change. Owner: RSI track. Independent of the MongoDB-cleanup handoff.
    - Spec: `docs/continual-learning/policy.md:62-63` (prefer prior accepted
      kind), `plan.md:66` (second similar event behaves differently).
 
-Follow-ups (separate rungs, not in this change): Step 3 derive
-`wasRealCollision` from git overlap; Step 4-5 `strategy_versions` +
-Gemini-proposed `LearningProposal` slice; seed a clean demo pod with a repeated
-dismissed signature (the historic 85 dismissals are orphaned — `collisionId`
-resolves to no collision — so they cannot drive the demo verifier).
+3. **Step 3 - derive `wasRealCollision` from git overlap (backend-authoritative)** ✅
+   - Overlap is captured AT detection time as `Collision.gitOverlap`
+     (`backend/src/agent/podman.ts`), while `engineer_states` are still fresh —
+     true only if ALL involved engineers have the collided file in their git
+     `changedFiles`, matched on case/whitespace-canonical names.
+   - `backend/src/memory/store.ts` `recordOutcome` overrides the client value
+     with `deriveWasRealCollision()`, which prefers the stored `gitOverlap`
+     (immune to late clicks / stale sidecars / the 120s TTL) and only falls back
+     to a live canonical-name re-derivation for pre-existing collisions.
+     `frontend/.../useInterventions.ts` stops sending hardcoded `true`.
+   - Restores the (accepted × wasReal) 2×2 the spec assumes; keeps `learned_from`
+     edges (`graph/live.ts:413`) from being silently zeroed on stage.
+   - Spec: `docs/continual-learning/spec.md:98-108`, `policy.md:35-42`.
+   - Hardened per Codex review (name canonicalization + detection-time capture).
+
+Follow-ups (separate rungs, not in this change): Step 4-5 `strategy_versions` +
+Gemini-proposed `LearningProposal` slice; Step 6 durable `owns` write; seed a
+clean demo pod with a repeated dismissed signature (the historic dismissals are
+orphaned — `collisionId` resolves to no collision — so they cannot drive the
+demo verifier).
 
 ### P1 - polish the money moment
 

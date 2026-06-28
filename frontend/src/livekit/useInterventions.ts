@@ -66,7 +66,9 @@ export function useInterventions(room: Room | null) {
         interventionId: active.id,
         collisionId: active.collisionId,
         podId: active.podId,
-        wasRealCollision: true,
+        // Placeholder only — the backend derives the authoritative value from
+        // git overlap at outcome time (the client cannot know). (RSI Step 3)
+        wasRealCollision: false,
         accepted,
         recordedAt: new Date().toISOString(),
       });
