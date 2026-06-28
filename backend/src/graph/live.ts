@@ -35,8 +35,23 @@ export function normalizeFile(f: string): string {
   return f
     .trim()
     .replace(/^["']|["']$/g, '')
+    .replace(/^[ACDMRTU?!]{1,2}\s+/, '')
     .replace(/^\.\//, '');
 }
+
+const MAX_COLLISIONS = 8;
+
+/** Reject "file" values that aren't real source paths — vision/git noise such as
+ *  URLs, env vars, browser/app names, and scratch/test artifacts. */
+const FILE_NOISE =
+  /(:\/\/|^[#~]|\s|\.env\b|\btett\b|test-change|demo-scratch|podman-test|scratch|sslip)/i;
+export function isFilePath(f: string): boolean {
+  if (!f || FILE_NOISE.test(f)) return false;
+  return /\.[a-z0-9]{1,6}$/i.test(f); // must end in a real file extension
+}
+
+/** Engineer names that are test/verification artifacts, not real teammates. */
+const ENGINEER_NOISE = /(^verify\b|^.$|testrepo|-?check\b|\d{4,})/i;
 
 const STATUS_RANK: Record<PodGraphNodeStatus, number> = {
   stable: 0,
@@ -166,32 +181,67 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
       label: o.engineerId,
       status: recent ? 'active' : undefined,
     });
-    if (o.currentFile) {
-      const file = normalizeFile(o.currentFile);
+    const file = o.currentFile ? normalizeFile(o.currentFile) : '';
+    if (isFilePath(file)) {
       const f = upsertNode(b, 'file', file, { label: file });
       upsertEdge(b, eng, f, 'editing', o.activity ?? 'edits', Math.max(0.4, o.confidence ?? 0.5));
     }
   }
 
-  // 3. Collisions: the detected overlaps (fused git + vision).
+  // Collisions referenced by accepted outcomes are the "learned" money path — they
+  // always survive the cap so the learned_from beat is never dropped.
+  const priorityCol = new Set<string>();
+  for (const out of outcomeDocs) {
+    if (!out.accepted || !out.wasRealCollision) continue;
+    if (out.collisionId) priorityCol.add(out.collisionId);
+    const iv = interventionDocs.find((i) => i.id === out.interventionId);
+    if (iv?.collisionId) priorityCol.add(iv.collisionId);
+  }
+
+  // 3. Collisions: collapse repeats by signature, keep the most recent, cap to
+  //    MAX_COLLISIONS, skip junk-file collisions. `collisionById` keeps every doc
+  //    (for the outcome join); `colNodeFor` maps each collisionId to its surviving
+  //    collision node (or null when collapsed / capped / filtered out).
   const collisionById = new Map<string, (typeof collisionDocs)[number]>();
+  const colNodeFor = new Map<string, string | null>();
+  const sigToNode = new Map<string, string>();
+  let distinctCollisions = 0;
   for (const col of collisionDocs) {
     collisionById.set(col.id, col);
+    const file = normalizeFile(col.file);
+    const sig =
+      (col as { memorySignature?: string }).memorySignature ?? `${file}#${col.symbol ?? ''}`;
+    const existing = sigToNode.get(sig);
+    if (existing) {
+      colNodeFor.set(col.id, existing);
+      continue;
+    }
+    if (!isFilePath(file)) {
+      colNodeFor.set(col.id, null);
+      continue;
+    }
+    const isPriority = priorityCol.has(col.id);
+    if (!isPriority && distinctCollisions >= MAX_COLLISIONS) {
+      colNodeFor.set(col.id, null);
+      continue;
+    }
     const cNode = upsertNode(b, 'collision', col.id, {
-      label: col.symbol ? `${col.file}#${col.symbol}` : col.file,
+      label: col.symbol ? `${file}#${col.symbol}` : file,
       status: 'risk',
       weight: SEVERITY_WEIGHT[col.severity] ?? 0.7,
-      summary: `${col.engineers.join(' + ')} on ${col.file}${
+      summary: `${col.engineers.join(' + ')} on ${file}${
         (col as { memorySignature?: string }).memorySignature ? ' · seen before' : ''
       }`,
     });
-    const file = normalizeFile(col.file);
     const fNode = upsertNode(b, 'file', file, { label: file, status: 'risk' });
     upsertEdge(b, fNode, cNode, 'touches', 'hot', 0.6);
     for (const name of col.engineers) {
       const eng = upsertNode(b, 'engineer', name, { label: name });
       upsertEdge(b, eng, cNode, 'collides', 'in', SEVERITY_WEIGHT[col.severity] ?? 0.7);
     }
+    sigToNode.set(sig, cNode);
+    colNodeFor.set(col.id, cNode);
+    if (!isPriority) distinctCollisions++;
   }
 
   // 4. Git truth (engineer_states): mark unpushed work and confirm editing on
@@ -212,10 +262,16 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     }
   }
 
-  // 5. Interventions: what PodMan offered for each collision.
+  // 5. Interventions: collapse to one (most recent) per surviving collision.
   const interventionById = new Map<string, (typeof interventionDocs)[number]>();
-  for (const iv of interventionDocs) {
+  const ivNodeForCol = new Map<string, string>();
+  const sortedIvs = [...interventionDocs].sort((a, b) =>
+    String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')),
+  );
+  for (const iv of sortedIvs) {
     interventionById.set(iv.id, iv);
+    const colNode = colNodeFor.get(iv.collisionId);
+    if (!colNode || ivNodeForCol.has(colNode)) continue;
     const ivNode = upsertNode(b, 'intervention', iv.id, {
       label:
         iv.suggestedAction?.kind === 'open_sync_pr'
@@ -225,9 +281,8 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
             : 'watch',
       summary: iv.message,
     });
-    if (b.nodes.has(nodeKey('collision', iv.collisionId))) {
-      upsertEdge(b, nodeKey('collision', iv.collisionId), ivNode, 'warns', 'nudges', 0.85);
-    }
+    upsertEdge(b, colNode, ivNode, 'warns', 'nudges', 0.85);
+    ivNodeForCol.set(colNode, ivNode);
   }
 
   // 6. Outcomes: the supervised learning signal -> learned_from edges + owns.
@@ -237,16 +292,41 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     const col = iv ? collisionById.get(iv.collisionId) : collisionById.get(out.collisionId);
     if (!col) continue;
     const file = normalizeFile(col.file);
+    if (!isFilePath(file)) continue;
     const owner =
       (out as { learnedOwner?: string }).learnedOwner ?? ownership[file] ?? col.engineers[0];
     if (!owner) continue;
     const engNode = upsertNode(b, 'engineer', owner, { label: owner, status: 'learned' });
     const fNode = upsertNode(b, 'file', file, { label: file });
     upsertEdge(b, engNode, fNode, 'owns', 'owns', 0.85);
-    const ivKey = iv ? nodeKey('intervention', iv.id) : null;
-    if (ivKey && b.nodes.has(ivKey)) {
-      upsertNode(b, 'intervention', iv!.id, { status: 'learned' });
-      upsertEdge(b, ivKey, engNode, 'learned_from', `learned: owns ${file}`, 0.6);
+    const cNode = colNodeFor.get(col.id);
+    const ivNode = cNode ? ivNodeForCol.get(cNode) : undefined;
+    if (ivNode) {
+      const ivObj = b.nodes.get(ivNode);
+      if (ivObj) ivObj.status = 'learned';
+      upsertEdge(b, ivNode, engNode, 'learned_from', `learned: owns ${file}`, 0.6);
+    }
+  }
+
+  // Prune test-artifact engineers, then anything left orphaned by that.
+  const dropNode = (id: string) => {
+    b.nodes.delete(id);
+    for (const [eid, e] of [...b.edges])
+      if (e.source === id || e.target === id) b.edges.delete(eid);
+  };
+  for (const [id, n] of [...b.nodes]) {
+    if (n.kind === 'engineer' && ENGINEER_NOISE.test(n.label)) dropNode(id);
+  }
+  // Collisions with no remaining engineer = test/orphan -> drop.
+  for (const [id, n] of [...b.nodes]) {
+    if (n.kind !== 'collision') continue;
+    if (![...b.edges.values()].some((e) => e.kind === 'collides' && e.target === id)) dropNode(id);
+  }
+  // Files / interventions left with no edges -> drop.
+  for (const [id, n] of [...b.nodes]) {
+    if (n.kind === 'file' || n.kind === 'intervention') {
+      if (![...b.edges.values()].some((e) => e.source === id || e.target === id))
+        b.nodes.delete(id);
     }
   }
 
@@ -259,7 +339,13 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
 
   const acceptedReal = outcomeDocs.filter((o) => o.accepted && o.wasRealCollision).length;
   const totalOutcomes = outcomeDocs.length;
-  const riskPaths = collisionDocs.filter((col) => new Set(col.engineers).size >= 2).length;
+  const riskPaths = new Set(
+    collisionDocs.map(
+      (col) =>
+        (col as { memorySignature?: string }).memorySignature ??
+        `${normalizeFile(col.file)}#${col.symbol ?? ''}`,
+    ),
+  ).size;
   const metrics: PodGraphMetric[] = [
     {
       label: 'Learned owners',

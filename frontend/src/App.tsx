@@ -268,10 +268,6 @@ export default function App() {
                 <ShieldCheckIcon data-icon="inline-start" />
                 Privacy-limited
               </Badge>
-              <Button variant="outline" onClick={() => setGraphPodId(pods[0]?.id ?? 'demo-pod')}>
-                <BrainCircuitIcon data-icon="inline-start" />
-                Team memory
-              </Button>
               <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
                 <RefreshCwIcon data-icon="inline-start" />
                 Refresh
@@ -342,6 +338,7 @@ export default function App() {
                       onRemoveMember={handleRemoveMember}
                       onUpdate={handleUpdate}
                       onDelete={handleDelete}
+                      onOpenGraph={setGraphPodId}
                     />
                   ))}
                 </div>
