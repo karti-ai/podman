@@ -163,11 +163,12 @@ export async function recordOutcome(outcome: InterventionOutcome): Promise<void>
 /** Document counts per collection — used by the /api/memory/stats endpoint. */
 export async function memoryStats(): Promise<Record<string, number>> {
   const c = await collections();
-  const [observations, collisions, interventions, outcomes] = await Promise.all([
+  const [observations, collisions, interventions, outcomes, suppressions] = await Promise.all([
     c.observations.estimatedDocumentCount(),
     c.collisions.estimatedDocumentCount(),
     c.interventions.estimatedDocumentCount(),
     c.outcomes.estimatedDocumentCount(),
+    c.suppressions.estimatedDocumentCount(),
   ]);
-  return { observations, collisions, interventions, outcomes };
+  return { observations, collisions, interventions, outcomes, suppressions };
 }

@@ -121,6 +121,28 @@ Key fields:
 Primary use: accepted and dismissed outcomes drive exact recall, suppression,
 and learned graph paths.
 
+### `suppressions`
+
+Durable negative-feedback proof: one record per *suppressed repeat* — a
+previously-dismissed collision signature recurred and PodMan stayed quiet.
+Written at repeat time by `backend/src/agent/podman.ts` (once per recurrence,
+re-armed on resolution), materialized as `suppressed` activity by
+`backend/src/graph/live.ts`.
+
+Key fields:
+
+- `id`
+- `podId`
+- `collisionId`
+- `file`
+- `engineers`
+- `priorInterventionId` — the dismissed intervention this repeat matched
+- `priorDismissedAt`
+- `suppressedAt` — the repeat time (drives recency in the activity stream)
+
+Index `{ podId: 1, suppressedAt: -1 }`. Counted in `/api/memory/stats`.
+**Preserve in any DB cleanup** — this is visible learning evidence, not noise.
+
 ### `team_model`
 
 Durable per-pod summary memory.
