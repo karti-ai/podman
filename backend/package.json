@@ -3,13 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "pnpm run dev:server",
     "dev:server": "tsx watch src/server.ts",
     "dev:agent": "tsx watch src/agent.ts",
     "graph:seed": "tsx src/graph/seed.ts",
     "start": "node dist/server.js",
+    "start:server": "node dist/server.js",
+    "start:agent": "node dist/agent.js",
+    "start:all": "node dist/hermes.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

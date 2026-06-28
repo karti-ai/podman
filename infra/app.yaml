@@ -1,26 +1,81 @@
-# DigitalOcean App Platform spec for the PodMan backend.
-# Deploy:  doctl apps create --spec infra/app.yaml
+# DigitalOcean App Platform spec for PodMan.
+# Deploy: doctl apps create --spec infra/app.yaml
 name: podman
 region: nyc
-services:
-  - name: backend
-    dockerfile_path: infra/Dockerfile
-    source_dir: /
+
+static_sites:
+  - name: web
     github:
       repo: karti-ai/podman
       branch: main
       deploy_on_push: true
+    source_dir: /
+    build_command: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @podman/shared build && pnpm --filter @podman/frontend build
+    output_dir: frontend/dist
+    index_document: index.html
+    error_document: index.html
+    routes:
+      - path: /
+    envs:
+      - key: VITE_BACKEND_URL
+        scope: BUILD_TIME
+        value: ${APP_URL}
+      - key: VITE_LIVEKIT_URL
+        scope: BUILD_TIME
+
+services:
+  - name: api
+    github:
+      repo: karti-ai/podman
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: infra/Dockerfile
     http_port: 8787
-    instance_size_slug: basic-xxs
+    instance_size_slug: apps-s-1vcpu-1gb
     instance_count: 1
     health_check:
       http_path: /health
+    routes:
+      - path: /api
+        preserve_path_prefix: true
+      - path: /health
     envs:
+      - { key: PODMAN_PROCESS, scope: RUN_TIME, value: server }
+      - { key: PORT, scope: RUN_TIME, value: '8787' }
       - { key: LIVEKIT_URL, scope: RUN_TIME }
       - { key: LIVEKIT_API_KEY, scope: RUN_TIME, type: SECRET }
       - { key: LIVEKIT_API_SECRET, scope: RUN_TIME, type: SECRET }
       - { key: GEMINI_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: GEMINI_VISION_MODEL, scope: RUN_TIME, value: gemini-2.0-flash }
+      - { key: GEMINI_LIVE_MODEL, scope: RUN_TIME, value: gemini-live-2.5-flash }
       - { key: GITHUB_TOKEN, scope: RUN_TIME, type: SECRET }
-      - { key: GITHUB_REPO, scope: RUN_TIME }
+      - { key: GITHUB_REPO, scope: RUN_TIME, value: karti-ai/podman }
       - { key: MONGODB_URI, scope: RUN_TIME, type: SECRET }
       - { key: VOYAGE_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: VOYAGE_EMBEDDING_MODEL, scope: RUN_TIME, value: voyage-4-lite }
+
+workers:
+  - name: podman-agent
+    github:
+      repo: karti-ai/podman
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: infra/Dockerfile
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    envs:
+      - { key: PODMAN_PROCESS, scope: RUN_TIME, value: agent }
+      - { key: POD_ROOM, scope: RUN_TIME, value: demo-pod }
+      - { key: LIVEKIT_URL, scope: RUN_TIME }
+      - { key: LIVEKIT_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: LIVEKIT_API_SECRET, scope: RUN_TIME, type: SECRET }
+      - { key: GEMINI_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: GEMINI_VISION_MODEL, scope: RUN_TIME, value: gemini-2.0-flash }
+      - { key: GEMINI_LIVE_MODEL, scope: RUN_TIME, value: gemini-live-2.5-flash }
+      - { key: GITHUB_TOKEN, scope: RUN_TIME, type: SECRET }
+      - { key: GITHUB_REPO, scope: RUN_TIME, value: karti-ai/podman }
+      - { key: MONGODB_URI, scope: RUN_TIME, type: SECRET }
+      - { key: VOYAGE_API_KEY, scope: RUN_TIME, type: SECRET }
+      - { key: VOYAGE_EMBEDDING_MODEL, scope: RUN_TIME, value: voyage-4-lite }

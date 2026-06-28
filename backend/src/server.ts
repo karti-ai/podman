@@ -6,7 +6,7 @@ import { AccessToken, RoomConfiguration } from 'livekit-server-sdk';
 import { env } from './env.js';
 import { createSyncPr } from './github/client.js';
 import { recordOutcome, memoryStats } from './memory/store.js';
-import { initMemory } from './memory/db.js';
+import { closeMemory, initMemory } from './memory/db.js';
 import {
   listPods,
   getPod,
@@ -179,3 +179,18 @@ http.listen(env.PORT, '0.0.0.0', () => {
     .then(() => seedDefaultPods())
     .catch((e) => console.warn(`[memory] init failed: ${(e as Error).message}`));
 });
+
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[server] ${signal} received; shutting down`);
+  for (const client of clients) client.close();
+  wss.close();
+  await new Promise<void>((resolve) => http.close(() => resolve()));
+  await closeMemory().catch((e) => console.warn(`[memory] close failed: ${(e as Error).message}`));
+  process.exit(0);
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));

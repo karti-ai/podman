@@ -13,7 +13,18 @@
     "dev:frontend": "pnpm --filter @podman/frontend dev",
     "dev:backend": "pnpm --filter @podman/backend dev",
     "build": "pnpm -r build",
+    "build:container": "docker build -f infra/Dockerfile -t podman-backend .",
     "typecheck": "pnpm -r typecheck",
+    "deploy:doctor": "node scripts/deploy-doctor.mjs",
+    "deploy:doctor:strict": "node scripts/deploy-doctor.mjs --strict",
+    "doctor": "node scripts/deploy-doctor.mjs",
+    "doctor:strict": "node scripts/deploy-doctor.mjs --strict",
+    "deploy:static:local": "node scripts/deploy-static-local.mjs",
+    "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm verify:backend && pnpm verify:frontend",
+    "verify:full": "pnpm verify && pnpm build:container && pnpm verify:containers",
+    "verify:backend": "node scripts/verify-backend.mjs",
+    "verify:containers": "node scripts/verify-containers.mjs",
+    "verify:frontend": "node scripts/verify-frontend.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -22,6 +33,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.0.1",
     "eslint": "^10.6.0",
+    "playwright": "^1.61.1",
     "prettier": "^3.9.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.0"
@@ -32,5 +44,10 @@
       "@google/genai",
       "protobufjs"
     ]
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "livekit-server-sdk": "^2.15.5",
+    "mongodb": "^7.4.0"
   }
 }

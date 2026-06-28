@@ -7,6 +7,16 @@ settings:
 importers:
 
   .:
+    dependencies:
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      livekit-server-sdk:
+        specifier: ^2.15.5
+        version: 2.15.5
+      mongodb:
+        specifier: ^7.4.0
+        version: 7.4.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -17,6 +27,9 @@ importers:
       eslint:
         specifier: ^10.6.0
         version: 10.6.0(jiti@2.7.0)
+      playwright:
+        specifier: ^1.61.1
+        version: 1.61.1
       prettier:
         specifier: ^3.9.0
         version: 3.9.0
@@ -31,7 +44,7 @@ importers:
     dependencies:
       '@google/genai':
         specifier: ^2.10.0
-        version: 2.10.0
+        version: 2.10.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
       '@livekit/rtc-node':
         specifier: ^0.13.29
         version: 0.13.29

@@ -1,5 +1,6 @@
 import type { EngineerContext, Collision, Intervention, InterventionOutcome } from '@podman/shared';
 import { collections } from './db.js';
+import { enrichCollisionMemory } from './vectors.js';
 
 /**
  * Continual-learning memory: persist observations, collisions, interventions,
@@ -22,7 +23,7 @@ export async function recordObservation(ctx: EngineerContext): Promise<void> {
 
 export async function recordCollision(collision: Collision): Promise<void> {
   await persist('collision', async () =>
-    (await collections()).collisions.insertOne({ ...collision }),
+    (await collections()).collisions.insertOne(await enrichCollisionMemory(collision)),
   );
 }
 

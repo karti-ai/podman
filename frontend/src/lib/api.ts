@@ -1,6 +1,10 @@
 import type { InterventionOutcome, Pod, PodInput } from '@podman/shared';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787';
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  (import.meta.env.DEV || ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    ? 'http://localhost:8787'
+    : '');
 
 export interface MemoryStats {
   observations: number;

@@ -185,8 +185,8 @@ export function PodView({
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="flex items-center justify-between gap-4 border-b pb-4">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-10 -mx-4 flex flex-col gap-3 border-b bg-background/86 px-4 pb-4 pt-2 backdrop-blur-xl sm:-mx-6 sm:px-6 md:flex-row md:items-center md:justify-between lg:-mx-8 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -200,13 +200,15 @@ export function PodView({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="truncate text-xl font-semibold tracking-tight">{team.name}</h1>
-                <Badge variant={room ? 'default' : 'secondary'}>{room ? 'live' : 'local'}</Badge>
+                <Badge variant={room ? 'default' : 'secondary'} className="rounded-md">
+                  {room ? 'live' : 'local'}
+                </Badge>
               </div>
-              <p className="truncate text-sm text-muted-foreground">{team.repo}</p>
+              <p className="truncate font-mono text-xs text-muted-foreground">{team.repo}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
             <Button variant="outline" onClick={toggleBeat} disabled={!room}>
               <Volume2Icon data-icon="inline-start" />
               {playingBeat ? 'Stop audio' : 'Test audio'}
@@ -244,8 +246,8 @@ export function PodView({
 
             <Card className="flex-1">
               <CardHeader>
-                <CardTitle>Room</CardTitle>
-                <CardDescription>Only the signals that matter right now.</CardDescription>
+                <CardTitle>Room state</CardTitle>
+                <CardDescription>People and media currently visible to PodMan.</CardDescription>
               </CardHeader>
               <CardContent>
                 {participants.length === 0 ? (
@@ -278,9 +280,9 @@ export function PodView({
             <Card>
               <CardHeader>
                 <CardTitle>Intervention</CardTitle>
-                <CardDescription>PodMan stays quiet until the signal is useful.</CardDescription>
+                <CardDescription>Card first, voice only for urgent escalation.</CardDescription>
                 <CardAction>
-                  <Badge variant={active ? 'default' : 'secondary'}>
+                  <Badge variant={active ? 'default' : 'secondary'} className="rounded-md">
                     {active ? 'active' : 'clear'}
                   </Badge>
                 </CardAction>
@@ -288,7 +290,7 @@ export function PodView({
               <CardContent>
                 {active ? (
                   <div className="flex flex-col gap-4">
-                    <div className="rounded-xl border bg-muted/30 p-3">
+                    <div className="rounded-lg border bg-muted/35 p-3">
                       <p className="text-sm leading-6">{active.message}</p>
                     </div>
                     <div className="flex items-center justify-between gap-3 text-sm">
@@ -306,8 +308,8 @@ export function PodView({
                       </EmptyMedia>
                       <EmptyTitle>No collision detected</EmptyTitle>
                       <EmptyDescription>
-                        Share your screen when ready. The agent will surface only meaningful
-                        overlap.
+                        Share your screen when ready. PodMan will stay quiet until there is a useful
+                        signal.
                       </EmptyDescription>
                     </EmptyHeader>
                   </Empty>
@@ -372,7 +374,7 @@ function Participant({ participant }: { participant: PInfo }) {
   return (
     <div
       className={cn(
-        'flex min-h-16 items-center justify-between gap-3 rounded-xl border bg-muted/20 px-3 transition',
+        'flex min-h-16 items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 transition',
         participant.speaking && 'bg-muted',
       )}
     >
@@ -386,7 +388,7 @@ function Participant({ participant }: { participant: PInfo }) {
           <p className="text-xs text-muted-foreground">{participant.isLocal ? 'you' : 'remote'}</p>
         </div>
       </div>
-      <Badge variant={participant.speaking ? 'default' : 'secondary'}>
+      <Badge variant={participant.speaking ? 'default' : 'secondary'} className="rounded-md">
         {participant.speaking ? 'speaking' : 'connected'}
       </Badge>
     </div>
