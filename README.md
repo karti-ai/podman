@@ -35,7 +35,6 @@ Source image: `~/pic.jpg`, committed as
 | Check pods and memory   | `curl https://podman.live/api/pods && curl https://podman.live/api/memory/stats`              |
 | Use the LLM externally  | Base URL `https://llm.alhinai.dev/v1`, model `gemma-4-31B-it`                                 |
 | Test Hermes             | `hermes -z 'Reply with exactly: working' --provider gemma4-31b-max --model gemma-4-31B-it`    |
-| Gemma 4 bring-up        | Modular/MAX lab at `/home/alhinai/modular-lab`                                                |
 | Start local development | API, vision agent, and frontend commands are in [Local Development](#local-development)       |
 | Debug production        | Public checks first, then systemd services in [Production Operations](#production-operations) |
 
@@ -50,7 +49,6 @@ Source image: `~/pic.jpg`, committed as
 | Health        | `https://podman.live/health` | Backend readiness                      |
 | Local API     | `127.0.0.1:8787`             | Express service behind Caddy           |
 | Reasoning LLM | `https://llm.alhinai.dev/v1` | OpenAI-compatible Modular/MAX endpoint |
-| Gemma MAX lab | `/home/alhinai/modular-lab`  | Modular/MAX bring-up path for Gemma 4  |
 | API key       | `not-needed`                 | Placeholder key for OpenAI clients     |
 | Hermes model  | `gemma-4-31B-it`             | 262K-context tool-using agent          |
 | Hermes config | `gemma4-31b-max`             | Custom provider used by Hermes locally |
@@ -83,9 +81,7 @@ flowchart TB
 
   subgraph Reasoning["External Reasoning Endpoint"]
     Tunnel["Cloudflare Tunnel<br/>llm.alhinai.dev"]
-    MaxLab["Modular MAX Lab<br/>/home/alhinai/modular-lab"]
     MaxServe["MAX OpenAI Server<br/>gemma-4-31B-it<br/>262144 context"]
-    MaxTest["MAX test port<br/>127.0.0.1:8001"]
     Hermes["Hermes Agent<br/>provider: gemma4-31b-max"]
   end
 
@@ -104,8 +100,6 @@ flowchart TB
   Vision --> GeminiEmbed
   Voice --> GeminiEmbed
   Ops --> Hermes --> Tunnel --> MaxServe
-  MaxLab --> MaxTest
-  MaxTest -. "validated Gemma 4<br/>staging path" .-> MaxServe
   Tunnel -. "public route<br/>llm.alhinai.dev/v1" .-> MaxServe
   API --> Hermes
   Lyria --> Voice
@@ -117,7 +111,7 @@ flowchart TB
   class Browser,Room user;
   class Caddy,API,Vision,Voice,Ops app;
   class Observations,State,Outcomes data;
-  class GeminiVision,GeminiVoice,GeminiEmbed,Lyria,Tunnel,MaxLab,MaxServe,MaxTest,Hermes ai;
+  class GeminiVision,GeminiVoice,GeminiEmbed,Lyria,Tunnel,MaxServe,Hermes ai;
 ```
 
 ## What It Does
@@ -160,9 +154,7 @@ flowchart LR
   VisionRoute --> Gemini20["gemini-2.0-flash<br/>screen understanding"]
   ConversationRoute --> GeminiLive["gemini-3.1-flash-live-preview<br/>live Q&A"]
   ConversationRoute --> GeminiTTS["gemini-3.1-flash-tts-preview<br/>urgent speech"]
-  HermesRoute --> Gemma["gemma-4-31B-it<br/>public serving via Modular MAX"]
-  HermesRoute --> Max["Modular MAX lab<br/>GB10 Gemma 4 validation"]
-  Max -. "test on :8001<br/>promote to public endpoint" .-> Gemma
+  HermesRoute --> Gemma["gemma-4-31B-it<br/>served by Modular MAX"]
   EmbedRoute --> Voyage["voyage-4-lite<br/>primary embeddings"]
   EmbedRoute --> GeminiEmbed["gemini-embedding-001<br/>fallback embeddings"]
   MusicRoute --> Lyria["lyria-3-clip-preview<br/>background music"]
@@ -172,7 +164,7 @@ flowchart LR
   classDef model fill:#f4edff,stroke:#805ad5,color:#2d1857;
   class Work,VoiceInput,OpsNeed,MemoryNeed,Ambient signal;
   class VisionRoute,ConversationRoute,HermesRoute,EmbedRoute,MusicRoute route;
-  class Gemini20,GeminiLive,GeminiTTS,Gemma,Max,Voyage,GeminiEmbed,Lyria model;
+  class Gemini20,GeminiLive,GeminiTTS,Gemma,Voyage,GeminiEmbed,Lyria model;
 ```
 
 ### Gemma 4 31B via Modular MAX
@@ -225,44 +217,9 @@ Why this matters: Hermes sends OpenAI tool schemas and `tool_choice: "auto"`.
 The model endpoint must support automatic tool choice so Hermes can initialize
 the agent without a client-side workaround.
 
-### Modular MAX for Gemma 4
+### Modular MAX
 
-The GB10 box uses a working Modular/MAX lab as the Gemma 4 bring-up,
-validation, and serving path. Run MAX on `8001` for testing, then promote it to
-the public endpoint when ready.
-
-Installed local Codex skills:
-
-```text
-/home/alhinai/.codex/skills/new-modular-project
-/home/alhinai/.codex/skills/mojo-syntax
-/home/alhinai/.codex/skills/mojo-gpu-fundamentals
-/home/alhinai/.codex/skills/mojo-python-interop
-/home/alhinai/.codex/skills/import-model
-/home/alhinai/.codex/skills/debug-model
-/home/alhinai/.codex/skills/profile-model
-```
-
-Restart Codex after installing or changing those skills so they are picked up.
-
-Working lab:
-
-```bash
-cd /home/alhinai/modular-lab
-uv run mojo --version
-uv run max --version
-uv run mojo hello.mojo
-```
-
-Verified output includes:
-
-```text
-Mojo 1.0.0b3.dev2026062806
-MAX 26.5.0.dev2026062806
-hello from Mojo on spark
-```
-
-Important finding from `max list`:
+Gemma 4 is served through Modular MAX on the GB10 machine.
 
 | MAX support  | Value                                    |
 | ------------ | ---------------------------------------- |
@@ -270,54 +227,12 @@ Important finding from `max list`:
 | Example      | `google/gemma-4-31B-it`                  |
 | Encodings    | `float4_e2m1fnx2`, `float16`, `bfloat16` |
 
-That means Modular/MAX recognizes the Gemma 4 31B architecture on this GB10
-machine.
-
-Do not run two GPU model servers at once. Stop the existing Gemma server before
-starting another MAX serve process:
-
-```bash
-docker stop <current-gemma-container>
-```
-
-Then test MAX on a separate port:
-
-```bash
-cd /home/alhinai/modular-lab
-
-uv run max serve \
-  --model /home/alhinai/models/gemma-4-31B-it \
-  --served-model-name gemma-4-31B-it \
-  --devices gpu:0 \
-  --port 8001 \
-  --trust-remote-code \
-  --quantization-encoding bfloat16 \
-  --max-length 262144 \
-  --kv-cache-format float8_e4m3fn \
-  --device-memory-utilization 0.85 \
-  --enable-prefix-caching \
-  --enable-chunked-prefill \
-  --max-batch-size 1 \
-  --max-batch-input-tokens 16384
-```
-
-Verify MAX:
-
-```bash
-curl http://127.0.0.1:8001/v1/models
-```
-
-#### Replace the current Gemma server with Modular/MAX
-
-If MAX works on `8001`, keep it there for testing until the public serving path
-is intentionally changed.
-
-Official resources:
-
-- [MAX LLM Book](https://llm.modular.com/)
-- [Model bring-up workflow](https://docs.modular.com/max/develop/model-bringup-workflow/)
-- [Mojo](https://mojolang.org/)
-- [Modular skills](https://github.com/modular/skills)
+| Runtime           | Role                                      |
+| ----------------- | ----------------------------------------- |
+| Modular MAX       | OpenAI-compatible Gemma 4 serving runtime |
+| `gemma-4-31B-it`  | Primary long-context reasoning model      |
+| `262144` tokens   | Reported model context window             |
+| `llm.alhinai.dev` | Public Cloudflare-routed model endpoint   |
 
 ### Gemini Surfaces
 
