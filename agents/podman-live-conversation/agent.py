@@ -11,6 +11,8 @@ from livekit.agents import Agent, AgentServer, AgentSession, RunContext, functio
 from livekit.plugins import google
 
 load_dotenv(".env.local")
+if not os.getenv("GOOGLE_API_KEY") and os.getenv("GEMINI_API_KEY"):
+    os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
 logger = logging.getLogger("podman-live-conversation")
 
