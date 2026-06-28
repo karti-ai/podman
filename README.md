@@ -107,41 +107,24 @@ flowchart LR
   Dev["Engineer browser<br/>React PWA + screen share"]
 
   subgraph DO["DigitalOcean droplet — systemd-supervised"]
-    Caddy["Caddy<br/>serves static frontend · proxies /api"]
-    API["API service<br/>/api/token · /api/pods · /api/outcome"]
-    Agent["Vision agent worker<br/>@livekit/rtc-node"]
-    Detector["Coordination detector<br/>collisions + blockers"]
-    Hermes["Hermes action layer<br/>cards · messages · urgent voice"]
-    PyAgent["Live conversation agent<br/>LiveKit Agents (Python)"]
+    WebApi["Caddy + API service<br/>static app · /api · LiveKit tokens"]
+    Agent["Vision agent worker"]
+    Coord["Hermes coordinator<br/>detects clashes · intervenes"]
+    PyAgent["Live conversation agent<br/>(Python)"]
   end
 
-  subgraph LK["LiveKit room — managed cloud"]
-    Tracks["Screen-share video tracks"]
-    DataCh["Data topic<br/>podman.intervention"]
-    AudioCh["Audio tracks<br/>TTS + Lyria music"]
-  end
+  LK["LiveKit room<br/>managed cloud"]
+  Mongo[("MongoDB Atlas<br/>team memory")]
 
-  Mongo[("MongoDB Atlas<br/>observations · collisions<br/>interventions · outcomes · vectors")]
-
-  Dev -->|static assets| Caddy
-  Dev -->|"POST /api/*"| Caddy --> API
-  API -->|LiveKit JWT| Dev
-  Dev -->|publish screen| Tracks
-
-  Agent -->|subscribe frames| Tracks
-  Agent --> Detector --> Hermes
-  Hermes -->|cards / messages| DataCh
-  Hermes -->|urgent voice| AudioCh
-  PyAgent <-->|join room · speak| AudioCh
-  DataCh --> Dev
-  AudioCh --> Dev
-  Dev -->|"POST /api/outcome"| Caddy
-
-  API <--> Mongo
-  Agent -->|write observations| Mongo
-  Detector -->|read recall · write collisions| Mongo
-  Hermes -->|write interventions| Mongo
-  PyAgent -->|tool reads| Mongo
+  Dev -->|"open app · get token"| WebApi
+  Dev <-->|"live screens + voice"| LK
+  LK -->|"pre-commit work signal"| Agent --> Coord
+  Coord -->|"nudge before duplicate work / clash"| LK
+  LK -->|"cards + spoken alerts"| Dev
+  PyAgent <-->|"answer questions by voice"| LK
+  Coord -->|"learn from every outcome"| Mongo
+  PyAgent -->|"recall team context"| Mongo
+  WebApi <-->|"pods + outcomes"| Mongo
 ```
 
 > Mongo connectivity is **required at boot** — the API and both agents ping Atlas
