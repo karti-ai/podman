@@ -1,4 +1,5 @@
 import type { Collision } from './collision.js';
+import type { HermesJobEvent } from './hermes-job.js';
 import type { Intervention, InterventionStatus } from './intervention.js';
 
 /** Topics multiplexed over the LiveKit data channel. */
@@ -10,6 +11,7 @@ export type DataMessage =
   | { type: 'HERMES_MESSAGE'; message: HermesMessage }
   | { type: 'VOICE_CUE'; text: string }
   | { type: 'LIVE_CONVERSATION_EVENT'; event: LiveConversationEvent }
+  | { type: 'HERMES_JOB_EVENT'; event: HermesJobEvent }
   | { type: 'ACK'; interventionId: string; status: InterventionStatus; note?: string }
   | { type: 'GIT_REPORT'; report: LocalGitReport }
   /** Any participant → the current test-audio owner: stop publishing the shared beat. */

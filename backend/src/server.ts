@@ -39,7 +39,22 @@ import {
   getLiveConversationContext,
   recordLiveConversationNote,
 } from './live-conversation/context.js';
-import type { Collision, Intervention, InterventionOutcome, SuggestedActionKind } from '@podman/shared';
+import {
+  abortHermesJob,
+  appendHermesJobEvent,
+  createHermesJob,
+  getActiveHermesJobForSession,
+  getHermesJob,
+  getLatestHermesJobForSession,
+  listHermesJobEvents,
+} from './hermes/jobs.js';
+import type {
+  Collision,
+  HermesJobEventType,
+  Intervention,
+  InterventionOutcome,
+  SuggestedActionKind,
+} from '@podman/shared';
 
 const app = express();
 app.use(cors());
@@ -47,15 +62,27 @@ app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.map((item) => String(item).trim()).filter(Boolean)
-    : [];
+  return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
 }
 
 function suggestedAction(value: unknown): SuggestedActionKind {
   return value === 'open_sync_pr' || value === 'ping_teammate' || value === 'none'
     ? value
     : 'ping_teammate';
+}
+
+function hermesJobEventType(value: unknown): HermesJobEventType | null {
+  return value === 'accepted' ||
+    value === 'heartbeat' ||
+    value === 'step_started' ||
+    value === 'step_output' ||
+    value === 'needs_confirmation' ||
+    value === 'step_completed' ||
+    value === 'aborted' ||
+    value === 'failed' ||
+    value === 'completed'
+    ? value
+    : null;
 }
 
 // Mint a LiveKit token for an engineer joining a pod.
@@ -225,6 +252,27 @@ app.get('/api/pods/:id/live-conversation/status', (req, res) => {
   res.json({ active: activeLiveConversation(req.params.id, identity) });
 });
 
+app.get('/api/pods/:id/live-conversation/:sessionId/hermes-job', async (req, res) => {
+  try {
+    const job = await getLatestHermesJobForSession(req.params.sessionId);
+    if (!job || job.podId !== req.params.id) return res.json({ job: null, events: [] });
+    res.json({ job, events: await listHermesJobEvents(job.id, 12) });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post('/api/pods/:id/live-conversation/:sessionId/hermes-job/abort', async (req, res) => {
+  try {
+    const job = await getActiveHermesJobForSession(req.params.sessionId);
+    if (!job || job.podId !== req.params.id)
+      return res.status(404).json({ error: 'active job not found' });
+    res.json({ job: await abortHermesJob(job.id) });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 function requireInternalAgent(req: express.Request, res: express.Response): boolean {
   const expected = env.INTERNAL_AGENT_TOKEN;
   if (!expected) {
@@ -271,6 +319,93 @@ app.post('/api/internal/pods/:id/live-conversation/:sessionId/note', async (req,
   }
 });
 
+app.post('/api/internal/hermes/jobs', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  try {
+    res.status(202).json(await createHermesJob(req.body ?? {}));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.get('/api/internal/hermes/jobs/:jobId', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  const job = await getHermesJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job not found' });
+  res.json(job);
+});
+
+app.post('/api/internal/hermes/jobs/:jobId/abort', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  const job = await abortHermesJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job not found' });
+  res.json(job);
+});
+
+app.get('/api/internal/hermes/jobs/:jobId/events', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  const job = await getHermesJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job not found' });
+  res.json(await listHermesJobEvents(req.params.jobId, 100));
+});
+
+app.post('/api/internal/hermes/jobs/:jobId/events', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  try {
+    const { type, message, data } = req.body ?? {};
+    const eventType = hermesJobEventType(type);
+    if (!eventType || typeof message !== 'string') {
+      return res.status(400).json({ error: 'type and message are required' });
+    }
+    res.status(201).json(await appendHermesJobEvent(req.params.jobId, eventType, message, data));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.get('/api/internal/hermes/jobs/:jobId/events/stream', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  const job = await getHermesJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job not found' });
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  let closed = false;
+  let lastIds = new Set<string>();
+  const send = async () => {
+    if (closed) return;
+    try {
+      const events = await listHermesJobEvents(req.params.jobId, 100);
+      const fresh = events.filter((event) => !lastIds.has(event.id));
+      lastIds = new Set(events.map((event) => event.id));
+      for (const event of fresh) {
+        res.write(`event: job-event\n`);
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+      const current = await getHermesJob(req.params.jobId);
+      if (current && ['completed', 'failed', 'aborted'].includes(current.status)) {
+        res.write(`event: done\n`);
+        res.write(`data: ${JSON.stringify(current)}\n\n`);
+        closed = true;
+        res.end();
+      } else {
+        res.write(`: keepalive ${Date.now()}\n\n`);
+      }
+    } catch (e) {
+      res.write(`event: error\n`);
+      res.write(`data: ${JSON.stringify({ error: (e as Error).message })}\n\n`);
+    }
+  };
+  await send();
+  const interval = setInterval(() => void send(), 1500);
+  req.on('close', () => {
+    closed = true;
+    clearInterval(interval);
+  });
+});
+
 app.post('/api/pods/:id/hermes/notify', async (req, res) => {
   const podId = req.params.id;
   const pod = await getPod(podId);
@@ -283,10 +418,14 @@ app.post('/api/pods/:id/hermes/notify', async (req, res) => {
   const now = new Date().toISOString();
   const engineers = stringArray(body.engineers);
   const recipients = engineers.length ? engineers : pod.members.slice(0, 2);
-  const file = typeof body.file === 'string' && body.file.trim() ? body.file.trim() : 'Hermes signal';
+  const file =
+    typeof body.file === 'string' && body.file.trim() ? body.file.trim() : 'Hermes signal';
   const urgent = body.urgency === 'urgent' || body.severity === 'critical';
   const collision: Collision = {
-    id: typeof body.collisionId === 'string' && body.collisionId ? body.collisionId : `col_${Date.now()}`,
+    id:
+      typeof body.collisionId === 'string' && body.collisionId
+        ? body.collisionId
+        : `col_${Date.now()}`,
     podId,
     file,
     symbol: typeof body.symbol === 'string' && body.symbol ? body.symbol : undefined,

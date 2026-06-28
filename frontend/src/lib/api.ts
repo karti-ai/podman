@@ -1,5 +1,7 @@
 import type {
   InterventionOutcome,
+  HermesJob,
+  HermesJobEvent,
   MemberWorkHistory,
   Pod,
   PodActivityEvent,
@@ -186,6 +188,33 @@ export async function stopLiveConversation(podId: string, sessionId: string): Pr
     { method: 'POST' },
   );
   if (!res.ok) throw new Error(`live conversation stop failed: ${res.status}`);
+}
+
+export async function getLiveConversationHermesJob(
+  podId: string,
+  sessionId: string,
+): Promise<{ job: HermesJob | null; events: HermesJobEvent[] }> {
+  return json(
+    await fetch(
+      `${BACKEND_URL}/api/pods/${encodeURIComponent(
+        podId,
+      )}/live-conversation/${encodeURIComponent(sessionId)}/hermes-job`,
+    ),
+  );
+}
+
+export async function abortLiveConversationHermesJob(
+  podId: string,
+  sessionId: string,
+): Promise<{ job: HermesJob | null }> {
+  return json(
+    await fetch(
+      `${BACKEND_URL}/api/pods/${encodeURIComponent(
+        podId,
+      )}/live-conversation/${encodeURIComponent(sessionId)}/hermes-job/abort`,
+      { method: 'POST' },
+    ),
+  );
 }
 
 export async function removeMember(id: string, name: string): Promise<Pod> {

@@ -17,6 +17,15 @@ export type {
 export * from './messages.js';
 export type { HermesMessage, LiveConversationEvent } from './messages.js';
 export type {
+  HermesContextScope,
+  HermesJob,
+  HermesJobEvent,
+  HermesJobEventType,
+  HermesJobInput,
+  HermesJobStatus,
+  HermesRiskLevel,
+} from './hermes-job.js';
+export type {
   PodGraph,
   PodGraphNode,
   PodGraphEdge,

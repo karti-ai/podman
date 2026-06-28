@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Any
 from urllib import error, request
 
@@ -28,6 +29,9 @@ You are in a private 1:1 voice conversation with one developer.
 Use PodMan tools before making claims about current work, git state, collisions, blockers,
 team memory, or recent decisions. Keep spoken answers short. Prefer one useful next step.
 If a critical collision event arrives, stop the current turn and state the alert immediately.
+For complex repository, terminal, GitHub, MongoDB, build, install, deploy, or multi-step tasks,
+call delegate_to_hermes. Do not run those actions directly. If the user says stop, wait, cancel,
+or change of plans while Hermes is running, call abort_active_hermes_job immediately.
 Do not reveal raw secrets, API keys, private tokens, or another teammate's private notes."""
 
 
@@ -62,11 +66,14 @@ def request_json(path: str, *, method: str = "GET", body: dict[str, Any] | None 
 
 
 class PodManLiveAgent(Agent):
-    def __init__(self, pod_id: str, identity: str, session_id: str) -> None:
+    def __init__(self, pod_id: str, identity: str, session_id: str, conversation_room: str) -> None:
         super().__init__(instructions=INSTRUCTIONS)
         self.pod_id = pod_id
         self.identity = identity
         self.session_id = session_id
+        self.conversation_room = conversation_room
+        self.active_hermes_job_id: str | None = None
+        self.last_spoken_progress_at = 0.0
 
     @function_tool()
     async def get_active_pod_context(self, context: RunContext) -> str:
@@ -122,6 +129,77 @@ class PodManLiveAgent(Agent):
                 snippets.append(haystack[max(0, idx - 400) : idx + 1200])
         return "\n---\n".join(snippets)[:8000] or haystack[:6000]
 
+    @function_tool()
+    async def delegate_to_hermes(
+        self,
+        context: RunContext,
+        prompt: str,
+        context_scope: str = "current_repo",
+        target_repository: str = "",
+        risk_level: str = "read_only",
+        requires_confirmation: bool = False,
+        success_criteria: list[str] | None = None,
+    ) -> str:
+        """Hand off a complex engineering task to Hermes, PodMan's autonomous backend execution engine.
+
+        Use this for filesystem, terminal, GitHub, MongoDB, build, install, deploy, test,
+        or multi-step repository tasks. Do not use this for simple conversational answers.
+        """
+        body = {
+            "prompt": prompt,
+            "contextScope": context_scope,
+            "targetRepository": target_repository or "karti-ai/podman",
+            "riskLevel": risk_level,
+            "requiresConfirmation": requires_confirmation,
+            "successCriteria": success_criteria or ["Hermes completes the requested inspection."],
+            "podId": self.pod_id,
+            "identity": self.identity,
+            "sessionId": self.session_id,
+            "conversationRoom": self.conversation_room,
+        }
+        job = await asyncio.to_thread(request_json, "/api/internal/hermes/jobs", method="POST", body=body)
+        self.active_hermes_job_id = str(job["id"])
+        return json.dumps(
+            {
+                "status": "accepted",
+                "job_id": self.active_hermes_job_id,
+                "spoken_ack": "Hermes is starting that now. I will keep you posted.",
+            },
+            ensure_ascii=True,
+        )
+
+    @function_tool()
+    async def abort_active_hermes_job(self, context: RunContext, reason: str = "User changed plans") -> str:
+        """Abort the currently running Hermes job immediately."""
+        if not self.active_hermes_job_id:
+            return "No active Hermes job is running."
+        job = await asyncio.to_thread(
+            request_json,
+            f"/api/internal/hermes/jobs/{self.active_hermes_job_id}/abort",
+            method="POST",
+            body={"reason": reason},
+        )
+        return json.dumps(
+            {
+                "status": job.get("status", "aborting"),
+                "job_id": self.active_hermes_job_id,
+                "spoken_ack": "Stopped. Hermes is aborting the job before making further changes.",
+            },
+            ensure_ascii=True,
+        )
+
+    def should_speak_progress(self, event: dict[str, Any]) -> bool:
+        event_type = event.get("type")
+        if event_type in {"completed", "failed", "aborted", "needs_confirmation"}:
+            return True
+        if event_type not in {"heartbeat", "step_started", "step_completed"}:
+            return False
+        monotonic = time.monotonic()
+        if monotonic - self.last_spoken_progress_at < 8:
+            return False
+        self.last_spoken_progress_at = monotonic
+        return True
+
 
 server = AgentServer()
 
@@ -139,7 +217,12 @@ async def entrypoint(ctx: agents.JobContext):
             voice=VOICE,
         ),
     )
-    agent = PodManLiveAgent(pod_id=pod_id, identity=identity, session_id=session_id)
+    agent = PodManLiveAgent(
+        pod_id=pod_id,
+        identity=identity,
+        session_id=session_id,
+        conversation_room=ctx.room.name,
+    )
 
     def on_data_received(*args: Any):
         payload = args[0] if args else b""
@@ -151,19 +234,28 @@ async def entrypoint(ctx: agents.JobContext):
             msg = json.loads(raw)
         except json.JSONDecodeError:
             return
-        if msg.get("type") != "LIVE_CONVERSATION_EVENT":
+        msg_type = msg.get("type")
+        if msg_type == "HERMES_JOB_EVENT":
+            event = msg.get("event") or {}
+            summary = str(event.get("message") or "").strip()
+            if str(event.get("type")) in {"completed", "failed", "aborted"}:
+                agent.active_hermes_job_id = None
+        elif msg_type == "LIVE_CONVERSATION_EVENT":
+            event = msg.get("event") or {}
+            summary = str(event.get("summary") or "").strip()
+        else:
             return
-        event = msg.get("event") or {}
-        summary = str(event.get("summary") or "").strip()
         if not summary:
             return
 
         async def interrupt_and_say() -> None:
             try:
-                await session.interrupt(force=True)
+                if msg_type == "LIVE_CONVERSATION_EVENT":
+                    await session.interrupt(force=True)
             except Exception as exc:
                 logger.warning("interrupt failed: %s", exc)
-            await session.say(summary, allow_interruptions=True, add_to_chat_ctx=True)
+            if msg_type == "LIVE_CONVERSATION_EVENT" or agent.should_speak_progress(event):
+                await session.say(summary, allow_interruptions=True, add_to_chat_ctx=True)
 
         asyncio.create_task(interrupt_and_say())
 

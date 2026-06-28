@@ -114,6 +114,15 @@ export async function initMemory(): Promise<void> {
     ['collisions.file', () => c.collisions.createIndex({ podId: 1, file: 1, detectedAt: -1 })],
     ['interventions.collisionId', () => c.interventions.createIndex({ collisionId: 1 })],
     ['outcomes.interventionId', () => c.outcomes.createIndex({ interventionId: 1 })],
+    ['hermes_jobs.id', () => db.collection('hermes_jobs').createIndex({ id: 1 }, { unique: true })],
+    [
+      'hermes_jobs.session',
+      () => db.collection('hermes_jobs').createIndex({ sessionId: 1, status: 1, updatedAt: -1 }),
+    ],
+    [
+      'hermes_job_events.job',
+      () => db.collection('hermes_job_events').createIndex({ jobId: 1, createdAt: 1 }),
+    ],
   ];
   for (const [name, make] of indexes) {
     try {

@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication } from 'livekit-client';
 import type {
+  HermesJob,
+  HermesJobEvent,
   MemberWorkHistory,
   MemberWorkHistoryEvent,
   MemberWorkHistoryFile,
@@ -38,6 +40,8 @@ import type {
 } from '@podman/shared';
 import { useBeat } from '../livekit/useBeat.js';
 import {
+  abortLiveConversationHermesJob,
+  getLiveConversationHermesJob,
   getMemberWorkHistory,
   startLiveConversation,
   stopLiveConversation,
@@ -147,12 +151,15 @@ export function PodView({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [conversationRoom, setConversationRoom] = useState<Room | null>(null);
-  const [conversationSession, setConversationSession] =
-    useState<LiveConversationSession | null>(null);
+  const [conversationSession, setConversationSession] = useState<LiveConversationSession | null>(
+    null,
+  );
   const [conversationState, setConversationState] = useState<
     'idle' | 'connecting' | 'listening' | 'speaking' | 'interrupted' | 'error'
   >('idle');
   const [conversationNote, setConversationNote] = useState<string | null>(null);
+  const [hermesJob, setHermesJob] = useState<HermesJob | null>(null);
+  const [hermesJobEvents, setHermesJobEvents] = useState<HermesJobEvent[]>([]);
   const [leftStreamOpen, setLeftStreamOpen] = useState(() =>
     readStoredBool('podman.myStreamOpen', true),
   );
@@ -259,7 +266,9 @@ export function PodView({
       element.autoplay = true;
       conversationAudioElementsRef.current.set(key, element);
       audioRef.current.appendChild(element);
-      setRemoteAudioTracks(audioElementsRef.current.size + conversationAudioElementsRef.current.size);
+      setRemoteAudioTracks(
+        audioElementsRef.current.size + conversationAudioElementsRef.current.size,
+      );
     };
     const removeAudio = (track: RemoteTrack, pub?: RemoteTrackPublication) => {
       const key = `conversation:${pub?.trackSid || track.sid || track.mediaStreamTrack.id}`;
@@ -295,6 +304,13 @@ export function PodView({
           setConversationState(msg.event?.interrupt ? 'interrupted' : 'listening');
           if (msg.event?.summary) setConversationNote(msg.event.summary);
         }
+        if (msg.type === 'HERMES_JOB_EVENT') {
+          const event = msg.event as HermesJobEvent;
+          setHermesJobEvents((events) =>
+            [...events.filter((item) => item.id !== event.id), event].slice(-12),
+          );
+          setConversationNote(event.message);
+        }
       } catch {
         // Ignore non-PodMan private-room data.
       }
@@ -319,6 +335,31 @@ export function PodView({
       setRemoteAudioTracks(audioElementsRef.current.size);
     };
   }, [conversationRoom]);
+
+  useEffect(() => {
+    if (!conversationSession) {
+      setHermesJob(null);
+      setHermesJobEvents([]);
+      return;
+    }
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const next = await getLiveConversationHermesJob(team.id, conversationSession.sessionId);
+        if (!alive) return;
+        setHermesJob(next.job);
+        setHermesJobEvents(next.events);
+      } catch {
+        // Keep voice conversation usable even if the status panel cannot refresh.
+      }
+    };
+    void refresh();
+    const interval = setInterval(() => void refresh(), 2500);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [team.id, conversationSession]);
 
   useEffect(() => {
     if (!historyMember) {
@@ -426,6 +467,8 @@ export function PodView({
       setConversationRoom(null);
       setConversationSession(null);
       setConversationState('idle');
+      setHermesJob(null);
+      setHermesJobEvents([]);
       try {
         await endingRoom.localParticipant.setMicrophoneEnabled(false).catch(() => {});
         await endingRoom.disconnect();
@@ -457,7 +500,21 @@ export function PodView({
       setConversationState('error');
       setConversationRoom(null);
       setConversationSession(null);
+      setHermesJob(null);
+      setHermesJobEvents([]);
       setNote(`Live conversation failed: ${(e as Error).message}`);
+    }
+  }
+
+  async function stopHermesJob() {
+    if (!conversationSession || !hermesJob) return;
+    setNote(null);
+    try {
+      const next = await abortLiveConversationHermesJob(team.id, conversationSession.sessionId);
+      setHermesJob(next.job);
+      setConversationNote('Hermes is aborting the current job.');
+    } catch (e) {
+      setNote(`Could not stop Hermes job: ${(e as Error).message}`);
     }
   }
 
@@ -813,7 +870,40 @@ export function PodView({
                         label="Context"
                         value={conversationRoom ? 'synced on demand' : 'waiting'}
                       />
+                      <StatusLine
+                        label="Hermes"
+                        value={hermesJob ? hermesJob.status.replaceAll('_', ' ') : 'idle'}
+                      />
                     </div>
+                    {hermesJob &&
+                      ['queued', 'running', 'waiting_for_confirmation', 'aborting'].includes(
+                        hermesJob.status,
+                      ) && (
+                        <Button
+                          variant="outline"
+                          onClick={() => void stopHermesJob()}
+                          data-testid="hermes-job-stop"
+                        >
+                          <XIcon data-icon="inline-start" />
+                          Stop Hermes Job
+                        </Button>
+                      )}
+                    {hermesJobEvents.length > 0 && (
+                      <div className="rounded-lg border border-dashed p-3">
+                        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <WorkflowIcon className="size-3.5" />
+                          Hermes progress
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {hermesJobEvents.slice(-3).map((event) => (
+                            <div key={event.id} className="text-sm leading-5">
+                              <span className="font-medium">{event.type.replaceAll('_', ' ')}</span>
+                              <span className="text-muted-foreground"> - {event.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {conversationNote && (
                       <div className="rounded-lg border border-dashed p-3">
                         <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">

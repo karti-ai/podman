@@ -22,6 +22,7 @@ const env = {
   GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? 'verify-github',
   GITHUB_REPO: process.env.GITHUB_REPO ?? 'karti-ai/podman',
   MONGODB_URI: mongoUri,
+  INTERNAL_AGENT_TOKEN: process.env.INTERNAL_AGENT_TOKEN ?? 'verify-internal-agent-token',
 };
 
 function fail(message) {
@@ -115,14 +116,11 @@ async function verifyApi() {
   }
 
   const liveConversation = await json(
-    await doFetch(
-      `${baseUrl}/api/pods/${encodeURIComponent(created.id)}/live-conversation/start`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identity: 'Alice', displayName: 'Alice' }),
-      },
-    ),
+    await doFetch(`${baseUrl}/api/pods/${encodeURIComponent(created.id)}/live-conversation/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ identity: 'Alice', displayName: 'Alice' }),
+    }),
   );
   if (
     typeof liveConversation.token !== 'string' ||
@@ -150,6 +148,52 @@ async function verifyApi() {
       { method: 'POST' },
     ),
   );
+
+  const hermesJob = await json(
+    await doFetch(`${baseUrl}/api/internal/hermes/jobs`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${env.INTERNAL_AGENT_TOKEN}`,
+      },
+      body: JSON.stringify({
+        prompt: 'Check repository state for backend verification.',
+        contextScope: 'current_repo',
+        riskLevel: 'read_only',
+        successCriteria: ['Git status is inspected.'],
+        podId: created.id,
+        identity: 'Alice',
+        sessionId: liveConversation.sessionId,
+      }),
+    }),
+  );
+  if (!hermesJob.id || hermesJob.status !== 'queued') {
+    fail('Hermes job create returned unexpected payload');
+  }
+  let finalJob = hermesJob;
+  for (let i = 0; i < 30; i++) {
+    finalJob = await json(
+      await doFetch(`${baseUrl}/api/internal/hermes/jobs/${encodeURIComponent(hermesJob.id)}`, {
+        headers: { authorization: `Bearer ${env.INTERNAL_AGENT_TOKEN}` },
+      }),
+    );
+    if (['completed', 'failed', 'aborted'].includes(finalJob.status)) break;
+    await delay(500);
+  }
+  if (finalJob.status !== 'completed') {
+    fail(`Hermes job did not complete: ${JSON.stringify(finalJob)}`);
+  }
+  const hermesEvents = await json(
+    await doFetch(
+      `${baseUrl}/api/internal/hermes/jobs/${encodeURIComponent(hermesJob.id)}/events`,
+      {
+        headers: { authorization: `Bearer ${env.INTERNAL_AGENT_TOKEN}` },
+      },
+    ),
+  );
+  if (!Array.isArray(hermesEvents) || hermesEvents.length < 1) {
+    fail('Hermes job events were not persisted');
+  }
 
   await json(
     await doFetch(`${baseUrl}/api/pods/${encodeURIComponent(created.id)}`, { method: 'DELETE' }),
@@ -320,6 +364,7 @@ try {
           'pod-crud',
           'hermes-notify',
           'live-conversation-session',
+          'hermes-job-lifecycle',
           'collision',
           'memory-recall',
           'graph',
