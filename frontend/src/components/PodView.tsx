@@ -50,6 +50,8 @@ export function PodView({
   const audioRef = useRef<HTMLDivElement>(null);
   const beatRef = useRef<BeatHandle | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const onLeaveRef = useRef(onLeave);
+  onLeaveRef.current = onLeave;
 
   // Subscribe to live room state: participants, active speakers, remote audio.
   useEffect(() => {
@@ -63,13 +65,16 @@ export function PodView({
       }
     };
     const onAudioGone = (track: RemoteTrack) => track.detach().forEach((el) => el.remove());
+    // Room closed out from under us (e.g. the pod was deleted) → back to the list.
+    const onDisconnected = () => onLeaveRef.current();
 
     room
       .on(RoomEvent.ParticipantConnected, refresh)
       .on(RoomEvent.ParticipantDisconnected, refresh)
       .on(RoomEvent.ActiveSpeakersChanged, refresh)
       .on(RoomEvent.TrackSubscribed, onAudio)
-      .on(RoomEvent.TrackUnsubscribed, onAudioGone);
+      .on(RoomEvent.TrackUnsubscribed, onAudioGone)
+      .on(RoomEvent.Disconnected, onDisconnected);
 
     return () => {
       room
@@ -77,7 +82,8 @@ export function PodView({
         .off(RoomEvent.ParticipantDisconnected, refresh)
         .off(RoomEvent.ActiveSpeakersChanged, refresh)
         .off(RoomEvent.TrackSubscribed, onAudio)
-        .off(RoomEvent.TrackUnsubscribed, onAudioGone);
+        .off(RoomEvent.TrackUnsubscribed, onAudioGone)
+        .off(RoomEvent.Disconnected, onDisconnected);
     };
   }, [room, me]);
 

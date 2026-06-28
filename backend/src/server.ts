@@ -17,7 +17,7 @@ import {
   removeMember,
   seedDefaultPods,
 } from './pods/store.js';
-import { getPresence } from './livekit/rooms.js';
+import { getPresence, closeRoom } from './livekit/rooms.js';
 import type { InterventionOutcome } from '@podman/shared';
 
 const app = express();
@@ -121,6 +121,7 @@ app.patch('/api/pods/:id', async (req, res) => {
 app.delete('/api/pods/:id', async (req, res) => {
   const ok = await deletePod(req.params.id);
   if (!ok) return res.status(404).json({ error: 'pod not found' });
+  await closeRoom(req.params.id); // end the live LiveKit room too (kicks anyone connected)
   res.json({ ok: true });
 });
 
