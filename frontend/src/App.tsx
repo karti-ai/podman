@@ -42,6 +42,26 @@ import { Skeleton } from '@/components/ui/skeleton';
 const SESSION_KEY = 'podman.session';
 const fmt = new Intl.NumberFormat('en', { notation: 'compact' });
 
+function pathPodId(): string | null {
+  const [segment] = window.location.pathname.split('/').filter(Boolean);
+  return segment ? decodeURIComponent(segment) : null;
+}
+
+function setPodPath(podId: string, replace = false): void {
+  const next = `/${encodeURIComponent(podId)}`;
+  if (window.location.pathname === next) return;
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', next);
+}
+
+function setHomePath(): void {
+  if (window.location.pathname === '/') return;
+  window.history.pushState({}, '', '/');
+}
+
+function replacePath(path: string): void {
+  window.history.replaceState({}, '', path || '/');
+}
+
 export default function App() {
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,13 +105,20 @@ export default function App() {
       return n;
     });
 
-  async function connectToPod(podId: string, who: string) {
-    const result = await joinPod(podId, who, who);
-    setRoom(result.room);
-    setDevMode(result.mode === 'dev');
-    setMember(who);
-    setJoinedPodId(podId);
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ podId, member: who }));
+  async function connectToPod(podId: string, who: string, replaceRoute = false) {
+    const previousPath = window.location.pathname;
+    setPodPath(podId, replaceRoute);
+    try {
+      const result = await joinPod(podId, who, who);
+      setRoom(result.room);
+      setDevMode(result.mode === 'dev');
+      setMember(who);
+      setJoinedPodId(podId);
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ podId, member: who }));
+    } catch (e) {
+      replacePath(previousPath);
+      throw e;
+    }
   }
 
   useEffect(() => {
@@ -124,8 +151,14 @@ export default function App() {
   }, [joinedPodId]);
 
   useEffect(() => {
+    const routedPodId = pathPodId();
     const raw = sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return;
+    if (!raw) {
+      if (routedPodId) {
+        setError(`Enter your name to join ${routedPodId}.`);
+      }
+      return;
+    }
     let saved: { podId: string; member: string };
     try {
       saved = JSON.parse(raw);
@@ -133,10 +166,11 @@ export default function App() {
       sessionStorage.removeItem(SESSION_KEY);
       return;
     }
+    const podId = routedPodId ?? saved.podId;
     setRestoring(true);
     void (async () => {
       try {
-        await connectToPod(saved.podId, saved.member);
+        await connectToPod(podId, saved.member, !!routedPodId);
       } catch {
         sessionStorage.removeItem(SESSION_KEY);
       } finally {
@@ -144,6 +178,30 @@ export default function App() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const routedPodId = pathPodId();
+      if (!routedPodId) {
+        room?.disconnect();
+        setRoom(null);
+        setJoinedPodId(null);
+        return;
+      }
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      try {
+        const saved = JSON.parse(raw) as { member: string };
+        if (saved.member && routedPodId !== joinedPodId) {
+          void connectToPod(routedPodId, saved.member, true);
+        }
+      } catch {
+        sessionStorage.removeItem(SESSION_KEY);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [joinedPodId, room]);
 
   async function run(key: string, fn: () => Promise<void>) {
     startPending(key);
@@ -179,6 +237,7 @@ export default function App() {
     run(id, async () => {
       await api.deletePod(id);
       setPods((cur) => cur.filter((x) => x.id !== id));
+      if (pathPodId() === id) setHomePath();
     });
   const handleAddMember = (id: string, name: string) =>
     run(id, async () => upsert(await api.addMember(id, name)));
@@ -215,6 +274,7 @@ export default function App() {
     setRoom(null);
     setJoinedPodId(null);
     sessionStorage.removeItem(SESSION_KEY);
+    setHomePath();
     void refresh();
   }
 

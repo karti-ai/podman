@@ -262,6 +262,9 @@ try {
   await podCard.getByPlaceholder('Your name').fill(verifyMember);
   await podCard.getByRole('button', { name: 'Add and join' }).click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
+  if (new URL(page.url()).pathname !== `/${verifyPod.id}`) {
+    throw new Error(`join did not update URL to /${verifyPod.id}: ${page.url()}`);
+  }
   await page.getByRole('heading', { name: 'My stream' }).waitFor({ timeout: 15_000 });
   await page.getByRole('heading', { name: 'Team stream' }).waitFor({ timeout: 15_000 });
 
@@ -316,6 +319,7 @@ try {
   }
 
   await page.getByRole('button', { name: 'Leave pod' }).click();
+  await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 });
 
   if (consoleErrors.length) throw new Error(`console errors: ${consoleErrors.join(' | ')}`);
   if (pageErrors.length) throw new Error(`page errors: ${pageErrors.join(' | ')}`);
