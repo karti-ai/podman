@@ -4,21 +4,31 @@ import { fetchPodGraph } from '../lib/graph.js';
 
 type Mode = 'risk' | 'learn' | 'all';
 
+// Fixed, light-readable hues for the node/edge encoding (kept stable across
+// light/dark so kinds stay distinguishable; the chrome uses shadcn tokens).
+const BLUE = '#2563eb';
+const SLATE = '#475569';
+const SLATE_EDGE = '#94a3b8';
+const SLATE_FAINT = '#cbd5e1';
+const AMBER = '#d97706';
+const RED = '#dc2626';
+const VIOLET = '#7c3aed';
+
 const KIND_COLOR: Record<PodGraphNodeKind, string> = {
-  engineer: '#3B5BFF',
-  file: '#ECE7DA',
-  feature: '#F6C445',
-  collision: '#E2403A',
-  intervention: '#8b6cff',
+  engineer: BLUE,
+  file: SLATE,
+  feature: AMBER,
+  collision: RED,
+  intervention: VIOLET,
 };
 
 const EDGE: Record<PodGraphEdge['kind'], { c: string; w: number; dash?: boolean }> = {
-  owns: { c: '#3B5BFF', w: 2.6 },
-  editing: { c: '#ECE7DA', w: 2 },
-  touches: { c: '#5d5d66', w: 1.6 },
-  collides: { c: '#E2403A', w: 3.2 },
-  warns: { c: '#F6C445', w: 3.2 },
-  learned_from: { c: '#8b6cff', w: 2.4, dash: true },
+  owns: { c: BLUE, w: 2.6 },
+  editing: { c: SLATE_EDGE, w: 2 },
+  touches: { c: SLATE_FAINT, w: 1.6 },
+  collides: { c: RED, w: 3.2 },
+  warns: { c: AMBER, w: 3.2 },
+  learned_from: { c: VIOLET, w: 2.4, dash: true },
 };
 
 function NodeShape({ node }: { node: PodGraphNode }) {
@@ -26,7 +36,7 @@ function NodeShape({ node }: { node: PodGraphNode }) {
   const { x, y } = node;
   switch (node.kind) {
     case 'engineer':
-      return <rect x={x - 15} y={y - 15} width={30} height={30} fill={c} />;
+      return <rect x={x - 15} y={y - 15} width={30} height={30} rx={4} fill={c} />;
     case 'file':
       return (
         <rect
@@ -34,6 +44,7 @@ function NodeShape({ node }: { node: PodGraphNode }) {
           y={y - 15}
           width={30}
           height={30}
+          rx={4}
           fill="none"
           stroke={c}
           strokeWidth={2.6}
@@ -81,15 +92,18 @@ function highlightFor(graph: PodGraph, mode: Mode, selected: string | null): Hig
 }
 
 const LEGEND: Array<{ label: string; swatch: CSSProperties }> = [
-  { label: 'engineer', swatch: { background: '#3B5BFF' } },
-  { label: 'file', swatch: { border: '2px solid #ECE7DA' } },
-  { label: 'feature', swatch: { background: '#F6C445', borderRadius: '50%' } },
-  {
-    label: 'collision',
-    swatch: { background: '#E2403A', clipPath: 'polygon(50% 0,100% 100%,0 100%)' },
-  },
-  { label: 'intervention', swatch: { background: '#8b6cff', transform: 'rotate(45deg)' } },
+  { label: 'engineer', swatch: { background: BLUE } },
+  { label: 'file', swatch: { border: `2px solid ${SLATE}` } },
+  { label: 'feature', swatch: { background: AMBER, borderRadius: '50%' } },
+  { label: 'collision', swatch: { background: RED, clipPath: 'polygon(50% 0,100% 100%,0 100%)' } },
+  { label: 'intervention', swatch: { background: VIOLET, transform: 'rotate(45deg)' } },
 ];
+
+function statusColor(status: string): string {
+  if (status === 'risk') return RED;
+  if (status === 'learned') return VIOLET;
+  return 'var(--foreground)';
+}
 
 export function GraphView({ podId, onClose }: { podId: string; onClose: () => void }) {
   const [graph, setGraph] = useState<PodGraph | null>(null);
@@ -131,40 +145,39 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
   return (
     <div className="pm-graph">
       <style>{`
-        .pm-graph{--bg:#0c0c0e;--panel:#141417;--line:#2a2a31;--paper:#ECE7DA;--mut:#8d897e;--red:#E2403A;--yel:#F6C445;--vio:#8b6cff;
-          font-family:'Space Grotesk',system-ui,sans-serif;background:var(--bg);color:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+        .pm-graph{font-family:inherit;background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:12px;overflow:hidden}
         .pm-graph *{box-sizing:border-box}
-        .pm-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:3px solid var(--paper)}
-        .pm-ttl{font-weight:800;font-size:18px;letter-spacing:.14em;text-transform:uppercase;font-family:Archivo,'Space Grotesk',sans-serif}
-        .pm-sub{font-size:10px;letter-spacing:.3em;color:var(--mut);text-transform:uppercase;margin-top:5px}
-        .pm-x{background:transparent;border:1px solid var(--line);color:var(--paper);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:7px 12px;border-radius:2px;cursor:pointer}
-        .pm-x:hover{border-color:var(--paper)}
-        .pm-bar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-        .pm-btn{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper);background:transparent;border:1px solid var(--line);padding:7px 12px;cursor:pointer;border-radius:2px}
-        .pm-btn:hover{border-color:var(--paper)}
-        .pm-btn.on{background:var(--red);border-color:var(--red);color:#fff}
-        .pm-grid{display:grid;grid-template-columns:180px 1fr 240px}
+        .pm-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+        .pm-ttl{font-weight:600;font-size:16px;color:var(--foreground)}
+        .pm-sub{font-size:12px;color:var(--muted-foreground);margin-top:3px}
+        .pm-x{background:transparent;border:1px solid var(--border);color:var(--foreground);font-size:13px;padding:6px 12px;border-radius:8px;cursor:pointer}
+        .pm-x:hover{background:var(--accent)}
+        .pm-bar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+        .pm-btn{font-size:13px;color:var(--foreground);background:transparent;border:1px solid var(--border);padding:6px 12px;cursor:pointer;border-radius:8px}
+        .pm-btn:hover{background:var(--accent)}
+        .pm-btn.on{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
+        .pm-grid{display:grid;grid-template-columns:190px 1fr 250px}
         .pm-col{padding:14px}
-        .pm-railR{border-left:1px solid var(--line);background:#17171b}
-        .pm-st{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--mut);margin:2px 0 12px}
-        .pm-kpi{border:1px solid var(--line);border-left:5px solid var(--vio);padding:10px 11px;margin-bottom:10px}
-        .pm-num{font-weight:800;font-size:26px;line-height:.9;font-variant-numeric:tabular-nums;font-family:Archivo,sans-serif}
-        .pm-klab{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-top:6px}
-        .pm-kdet{font-size:10px;color:var(--mut);margin-top:5px;line-height:1.4}
-        .pm-canvas{background:var(--panel);border-left:1px solid var(--line);border-right:1px solid var(--line);min-height:472px}
+        .pm-railR{border-left:1px solid var(--border);background:var(--muted)}
+        .pm-st{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);margin:2px 0 12px;font-weight:500}
+        .pm-kpi{border:1px solid var(--border);background:var(--card);border-radius:10px;padding:11px 12px;margin-bottom:10px}
+        .pm-num{font-weight:600;font-size:26px;line-height:1;font-variant-numeric:tabular-nums;color:var(--foreground)}
+        .pm-klab{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);margin-top:6px;font-weight:500}
+        .pm-kdet{font-size:11px;color:var(--muted-foreground);margin-top:5px;line-height:1.45}
+        .pm-canvas{background:var(--card);border-left:1px solid var(--border);border-right:1px solid var(--border);min-height:472px}
         .pm-canvas svg{width:100%;height:auto;display:block}
         .pm-node{cursor:pointer}
-        .pm-lbl{font-weight:500;font-size:11px;letter-spacing:.06em;fill:var(--paper);text-transform:uppercase}
-        .pm-dim{opacity:.12;transition:opacity .25s}
-        .pm-dkind{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--mut)}
-        .pm-dname{font-weight:800;font-size:20px;margin:5px 0 8px;font-family:Archivo,sans-serif}
-        .pm-drow{display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--line);color:var(--mut)}
-        .pm-drow b{color:var(--paper);font-weight:500}
-        .pm-note{font-size:12px;color:var(--mut);line-height:1.5;margin-top:10px}
-        .pm-legend{display:flex;gap:14px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+        .pm-lbl{font-weight:500;font-size:11px;fill:var(--foreground)}
+        .pm-dim{opacity:.18;transition:opacity .25s}
+        .pm-dkind{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground)}
+        .pm-dname{font-weight:600;font-size:18px;margin:5px 0 10px;color:var(--foreground)}
+        .pm-drow{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid var(--border);color:var(--muted-foreground)}
+        .pm-drow b{color:var(--foreground);font-weight:500}
+        .pm-note{font-size:13px;color:var(--muted-foreground);line-height:1.55;margin-top:10px}
+        .pm-legend{display:flex;gap:14px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted-foreground)}
         .pm-lg{display:flex;align-items:center;gap:6px}
         .pm-sw{width:13px;height:13px;display:inline-block}
-        @media(max-width:760px){.pm-grid{grid-template-columns:1fr}.pm-railR{border-left:0;border-top:1px solid var(--line)}.pm-canvas{border:0;border-top:1px solid var(--line)}}
+        @media(max-width:760px){.pm-grid{grid-template-columns:1fr}.pm-railR{border-left:0;border-top:1px solid var(--border)}.pm-canvas{border:0;border-top:1px solid var(--border)}}
       `}</style>
 
       <div className="pm-hd">
@@ -199,10 +212,14 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
       </div>
 
       {error && (
-        <p style={{ padding: '16px', color: '#ff7d76', fontSize: 13 }}>Graph error: {error}</p>
+        <p style={{ padding: '16px', color: 'var(--destructive)', fontSize: 13 }}>
+          Graph error: {error}
+        </p>
       )}
       {!graph && !error && (
-        <p style={{ padding: '16px', color: '#8d897e', fontSize: 13 }}>Loading graph…</p>
+        <p style={{ padding: '16px', color: 'var(--muted-foreground)', fontSize: 13 }}>
+          Loading graph…
+        </p>
       )}
 
       {graph && (
@@ -258,7 +275,7 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
                   >
                     <NodeShape node={n} />
                     <text className="pm-lbl" x={n.x} y={n.y + 33} textAnchor="middle">
-                      {n.label.toUpperCase()}
+                      {n.label}
                     </text>
                   </g>
                 ))}
@@ -272,18 +289,7 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
                   <div className="pm-dname">{sel.label}</div>
                   <div className="pm-drow">
                     <span>Status</span>
-                    <b
-                      style={{
-                        color:
-                          sel.status === 'risk'
-                            ? '#E2403A'
-                            : sel.status === 'learned'
-                              ? '#b7a4ff'
-                              : '#ECE7DA',
-                      }}
-                    >
-                      {sel.status}
-                    </b>
+                    <b style={{ color: statusColor(sel.status) }}>{sel.status}</b>
                   </div>
                   <div className="pm-drow">
                     <span>Relationships</span>
@@ -296,7 +302,7 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
                   <div className="pm-dkind">Continual learning</div>
                   <div className="pm-dname">It learned</div>
                   <div className="pm-note">
-                    Violet <b style={{ color: '#b7a4ff' }}>learned_from</b> edges are ownership
+                    The violet <b style={{ color: VIOLET }}>learned_from</b> edges are ownership
                     PodMan retained from accepted interventions — the graph gets sharper every
                     session. Click any node to trace its relationships.
                   </div>
@@ -313,11 +319,11 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
               </span>
             ))}
             <span className="pm-lg">
-              <span className="pm-sw" style={{ background: '#E2403A', height: 3 }} />
+              <span className="pm-sw" style={{ background: RED, height: 3 }} />
               collides
             </span>
             <span className="pm-lg">
-              <span className="pm-sw" style={{ background: '#8b6cff', height: 3 }} />
+              <span className="pm-sw" style={{ background: VIOLET, height: 3 }} />
               learned_from
             </span>
           </div>

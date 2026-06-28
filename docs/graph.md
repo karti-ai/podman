@@ -79,7 +79,7 @@ Additive routes in `backend/src/server.ts` (shared file — additive only).
 - `backend/src/graph/store.ts` — `loadPodGraph`, `seedGraph`, `reachFrom` (`$graphLookup`)
 - `backend/src/graph/seed.ts` — `pnpm graph:seed` (writes demo into `team_model` + graph collections)
 - `frontend/src/lib/graph.ts` — `fetchPodGraph(podId)`
-- `frontend/src/components/GraphView.tsx` — dark-Bauhaus SVG graph (toggle from `App.tsx`)
+- `frontend/src/components/GraphView.tsx` — shadcn-themed SVG graph (theme-aware; toggle from `App.tsx`)
 
 ## Demo-first plan
 
