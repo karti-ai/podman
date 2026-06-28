@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   BrainCircuitIcon,
   MoreHorizontalIcon,
-  PlusIcon,
   Trash2Icon,
   UserRoundIcon,
   VideoIcon,
@@ -16,7 +15,6 @@ import {
   CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -43,9 +41,9 @@ export function PodCard({
   pod,
   busy,
   presence,
-  onJoin,
+  onJoin: _onJoin,
   onAddAndJoin,
-  onAddMember,
+  onAddMember: _onAddMember,
   onRemoveMember: _onRemoveMember,
   onUpdate,
   onDelete,
@@ -72,7 +70,6 @@ export function PodCard({
 
   const inRoom = (name: string) => presence.some((p) => p.toLowerCase() === name.toLowerCase());
   const active = presence.length > 0;
-  const primaryMember = pod.members[0] ?? '';
 
   function saveEdit() {
     onUpdate(pod.id, {
@@ -83,11 +80,12 @@ export function PodCard({
     setEditing(false);
   }
 
-  function submitMember(join: boolean) {
+  // One action: enter your name, hit Join → added to the roster (deduped
+  // server-side) and connected to the room in a single step.
+  function join() {
     const name = newMember.trim();
     if (!name) return;
-    if (join) onAddAndJoin(pod, name);
-    else onAddMember(pod.id, name);
+    onAddAndJoin(pod, name);
     setNewMember('');
   }
 
@@ -165,39 +163,16 @@ export function PodCard({
                 value={newMember}
                 onChange={(e) => setNewMember(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitMember(true);
+                  if (e.key === 'Enter') join();
                 }}
               />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => submitMember(false)}
-                disabled={busy || !newMember.trim()}
-              >
-                <PlusIcon />
-                <span className="sr-only">Add member</span>
+              <Button className="min-w-24" onClick={join} disabled={busy || !newMember.trim()}>
+                <VideoIcon data-icon="inline-start" />
+                Join
               </Button>
             </div>
           </div>
         </CardContent>
-
-        <CardFooter className="justify-between gap-2">
-          <Button
-            variant="outline"
-            onClick={() => primaryMember && onJoin(pod, primaryMember)}
-            disabled={busy || !primaryMember}
-          >
-            <VideoIcon data-icon="inline-start" />
-            Join
-          </Button>
-          <Button
-            className="min-w-28"
-            onClick={() => submitMember(true)}
-            disabled={busy || !newMember.trim()}
-          >
-            Add and join
-          </Button>
-        </CardFooter>
       </Card>
 
       <Dialog open={editing} onOpenChange={setEditing}>
