@@ -35,6 +35,12 @@ function canonicalName(raw?: string): string {
   return (raw ?? '').trim().toLowerCase();
 }
 
+/** How long a still-present conflict stays muted after we voice it, before it
+ *  re-alerts. Edge-trigger alone permanently muted files that stay dirty for
+ *  the whole session (e.g. README everyone tests on). This bounds that: voice
+ *  once, then re-alert at most every interval while it persists. */
+const CONFLICT_REALERT_MS = Number(process.env.CONFLICT_REALERT_MS ?? '20000');
+
 /** Git ground truth: do ALL involved engineers currently have the collided file
  *  in their changedFiles? Computed at detection time while git state is fresh. */
 function engineersOverlapOnFile(collision: Collision, gitStates: Map<string, GitState>): boolean {
@@ -50,13 +56,15 @@ function engineersOverlapOnFile(collision: Collision, gitStates: Map<string, Git
 export class PodMan {
   private contexts = new Map<string, EngineerContext>();
   /**
-   * Conflicts we have already voiced and that are still unresolved, keyed by
-   * file (see conflictKey). Edge-triggered alerting: speak once when a conflict
-   * appears, stay quiet while it persists. A conflict is re-armed (deleted
-   * here) by onScreenFrame as soon as a detection cycle no longer sees it, so a
-   * resolved-then-recurring conflict alerts again.
+   * Conflicts we have already voiced, keyed by file + engineer pair (see
+   * conflictKey), mapped to the time we last voiced them. Edge-triggered:
+   * speak once when a conflict appears. Re-armed (deleted here) by
+   * onScreenFrame as soon as a detection cycle no longer sees it, so a
+   * resolved-then-recurring conflict alerts again. Additionally, a conflict
+   * that *persists* re-alerts every CONFLICT_REALERT_MS so a perpetually-dirty
+   * file (README) doesn't go silent forever after the first alert.
    */
-  private activeConflicts = new Set<string>();
+  private activeConflicts = new Map<string, number>();
 
   constructor(
     private room: Room,
@@ -107,7 +115,7 @@ export class PodMan {
     // Re-arm: any conflict we previously voiced that is no longer present has
     // resolved, so allow it to alert again if it recurs.
     const current = new Set(collisions.map((c) => this.conflictKey(c)));
-    for (const key of this.activeConflicts) {
+    for (const key of this.activeConflicts.keys()) {
       if (!current.has(key)) this.activeConflicts.delete(key);
     }
 
@@ -129,12 +137,16 @@ export class PodMan {
    * basename.
    */
   private conflictKey(collision: Collision): string {
-    return `${collision.overlapKind ?? 'file'}:${comparableBasename(collision.file)}`;
+    const who = [...collision.engineers].map(canonicalName).sort().join('+');
+    return `${collision.overlapKind ?? 'file'}:${comparableBasename(collision.file)}:${who}`;
   }
 
   private async handle(collision: Collision): Promise<void> {
     const key = this.conflictKey(collision);
-    if (this.activeConflicts.has(key)) return; // single-shot: already voiced, still unresolved
+    const lastAlerted = this.activeConflicts.get(key);
+    // Edge-trigger + time-based re-arm: stay quiet right after voicing, but
+    // re-alert a persistent conflict once CONFLICT_REALERT_MS has elapsed.
+    if (lastAlerted !== undefined && Date.now() - lastAlerted < CONFLICT_REALERT_MS) return;
 
     const prior = await recallSimilar(collision); // Loop A: exact/vector recall raises confidence
     // Only escalate to critical (which triggers the spoken alert) when the
@@ -155,7 +167,7 @@ export class PodMan {
         // suppressed-repeat per recurrence, not once per frame; it re-arms via
         // the resolution sweep in onScreenFrame. Awaited like recordCollision so
         // the durable learning proof is reliably written.
-        this.activeConflicts.add(key);
+        this.activeConflicts.set(key, Date.now());
         await recordSuppression(
           collision,
           prior.priorOutcome.interventionId,
@@ -165,7 +177,7 @@ export class PodMan {
       return; // Loop B: policy gate
     }
 
-    this.activeConflicts.add(key); // claim now we're alerting; re-armed in onScreenFrame on resolution
+    this.activeConflicts.set(key, Date.now()); // claim + timestamp; re-armed on resolution or after CONFLICT_REALERT_MS
     await recordCollision(collision);
     const action = preferredAction(collision, prior);
     const shortFile = collision.file.split('/').pop() ?? collision.file;
