@@ -7,7 +7,6 @@ import {
   recordObservation,
   recordCollision,
   recordIntervention,
-  hasRecentInterventionForCollision,
   updateInterventionStatus,
 } from '../memory/store.js';
 import { getGitStates } from '../memory/db.js';
@@ -17,6 +16,14 @@ import { publishHermesIntervention } from '../action/hermes.js';
 
 export class PodMan {
   private contexts = new Map<string, EngineerContext>();
+  /**
+   * Conflicts we have already voiced and that are still unresolved, keyed by
+   * file (see conflictKey). Edge-triggered alerting: speak once when a conflict
+   * appears, stay quiet while it persists. A conflict is re-armed (deleted
+   * here) by onScreenFrame as soon as a detection cycle no longer sees it, so a
+   * resolved-then-recurring conflict alerts again.
+   */
+  private activeConflicts = new Set<string>();
 
   constructor(
     private room: Room,
@@ -60,15 +67,43 @@ export class PodMan {
 
     const github = await getGithubState(); // cached
     const collisions = detectCollisions([...this.contexts.values()], github, gitStates);
+
+    // Re-arm: any conflict we previously voiced that is no longer present has
+    // resolved, so allow it to alert again if it recurs.
+    const current = new Set(collisions.map((c) => this.conflictKey(c)));
+    for (const key of this.activeConflicts) {
+      if (!current.has(key)) this.activeConflicts.delete(key);
+    }
+
     for (const collision of collisions) await this.handle(collision);
   }
 
+  /**
+   * Stable identity for a conflict, independent of the Date.now() baked into
+   * collision.id. Mirrors comparableFile() in memory/store.ts so keys line up:
+   * strip any git-status prefix ("M ", "?? ") and reduce to a lowercased
+   * basename.
+   */
+  private conflictKey(collision: Collision): string {
+    return (
+      (collision.file ?? '')
+        .trim()
+        .replace(/^(\?\?|[MADRCU!]{1,2})\s+/, '')
+        .split(/[\\/]/)
+        .pop()
+        ?.toLowerCase() ?? ''
+    );
+  }
+
   private async handle(collision: Collision): Promise<void> {
+    const key = this.conflictKey(collision);
+    if (this.activeConflicts.has(key)) return; // single-shot: already voiced, still unresolved
+
     const prior = await recallSimilar(collision); // Loop A: exact/vector recall raises confidence
     if (prior) collision.severity = 'critical';
     if (!shouldIntervene(collision, prior)) return; // Loop B: policy gate
-    if (await hasRecentInterventionForCollision(collision)) return;
 
+    this.activeConflicts.add(key); // claim now we're alerting; re-armed in onScreenFrame on resolution
     await recordCollision(collision);
     const action = preferredAction(collision, prior);
     const names = collision.engineers.join(' + ');
