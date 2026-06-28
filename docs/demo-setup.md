@@ -69,9 +69,9 @@ Pre-create these files in the demo repo before the demo:
 | 0:20  | Alice opens `auth/middleware.ts`, starts typing | Alice       |
 | 0:45  | Bob opens `frontend/login.tsx`                  | Bob         |
 | 0:50  | Carol runs `curl` command, sees error           | Carol       |
-| ~1:20 | BLOCKER_DETECTED nudge fires                    | Hermes auto |
+| ~1:20 | BLOCKER_DETECTED intervention fires             | Hermes auto |
 | 1:50  | Alice starts her server (`node server.js`)      | Alice       |
-| ~2:00 | DEPENDENCY_READY nudge fires                    | Hermes auto |
+| ~2:00 | DEPENDENCY_READY intervention fires             | Hermes auto |
 | 2:20  | Optional: show session 2 ownership warm-start   | Presenter   |
 | 2:45  | Close                                           | Presenter   |
 
@@ -89,7 +89,7 @@ Pre-create these files in the demo repo before the demo:
 
 ## Cooldown note
 
-Hermes has a 3-minute cooldown between nudges per pod. For the demo, if you need to trigger a second event quickly:
+Hermes has a 3-minute cooldown between urgent voice cues per pod. For the demo, if you need to trigger a second urgent voice event quickly:
 
 Option 1: restart Hermes between the two demo scenarios (resets cooldown state)
 Option 2: set `NUDGE_COOLDOWN_MS=0` via env var during demo (add this override to Hermes)
@@ -102,7 +102,7 @@ If any system fails on stage:
 
 1. **Hermes unreachable:** switch to local (`pnpm --filter backend dev`) — PWA auto-falls back to `localhost:8787`
 2. **Gemini Vision low confidence:** presenter narrates what PodMan "saw" while playing the backup video
-3. **LiveKit audio not working:** play backup video — show the nudge text cards on screen instead
+3. **LiveKit audio not working:** play backup video — show the intervention cards on screen instead
 4. **Full system failure:** play the backup recording, narrate the demo live
 
 Always have the backup video on a separate device, not the same laptop running Hermes.

@@ -1,0 +1,20 @@
+[Unit]
+Description=PodMan private LiveKit/Gemini live conversation agent
+After=network-online.target podman-platform-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/podman/agents/podman-live-conversation
+Environment=PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=/root/podman/backend/.env
+ExecStart=/root/.local/bin/uv run agent.py dev
+Restart=always
+RestartSec=3
+MemoryHigh=1024M
+MemoryMax=1536M
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

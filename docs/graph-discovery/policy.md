@@ -1,6 +1,6 @@
 # Graph Discovery Policy
 
-Status: draft  
+Status: demo-backed / active
 Scope: graph hygiene, evidence thresholds, and UI truthfulness
 
 ## Prime Rule
@@ -80,4 +80,3 @@ Semantic colors stay stable:
 - Learned: violet dashed edge.
 
 Chrome should use the app's light shadcn tokens.
-

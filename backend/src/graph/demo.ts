@@ -28,6 +28,73 @@ export function createDemoPodGraph(podId: string): PodGraph {
         detail: 'Interventions accepted this session (+14%).',
       },
     ],
+    loop: {
+      activeStep: 'adapt',
+      steps: [
+        {
+          key: 'observe',
+          label: 'Observe',
+          value: '2',
+          detail: 'Screen context and local git state show two active editors.',
+          status: 'complete',
+        },
+        {
+          key: 'store',
+          label: 'Store',
+          value: '7',
+          detail: 'Observations, collisions, interventions, and outcomes are in MongoDB.',
+          status: 'complete',
+        },
+        {
+          key: 'predict',
+          label: 'Predict',
+          value: '2',
+          detail: 'Same-file risk paths are detected before push.',
+          status: 'complete',
+        },
+        {
+          key: 'outcome',
+          label: 'Outcome',
+          value: '6',
+          detail: 'Accepted and dismissed outcomes supervise future routing.',
+          status: 'complete',
+        },
+        {
+          key: 'adapt',
+          label: 'Adapt',
+          value: '1',
+          detail: 'Accepted real collision created a learned_from edge.',
+          status: 'complete',
+        },
+      ],
+    },
+    activity: [
+      {
+        id: 'demo-learned-auth',
+        at: new Date().toISOString(),
+        kind: 'learned',
+        title: 'Learned Karti owns auth.ts',
+        detail: 'Accepted sync PR outcome created a durable learned_from path.',
+        nodeId: 'engineer:karti',
+        edgeId: 'e7',
+      },
+      {
+        id: 'demo-intervention-sync-pr',
+        at: new Date().toISOString(),
+        kind: 'intervention',
+        title: 'Intervention: sync PR',
+        detail: 'PodMan offered a small coordination card before voice.',
+        nodeId: 'intervention:sync-pr',
+      },
+      {
+        id: 'demo-collision-auth',
+        at: new Date().toISOString(),
+        kind: 'collision',
+        title: 'Collision risk on auth.ts',
+        detail: 'Karti and Yahya converged on unpushed work.',
+        nodeId: 'collision:auth',
+      },
+    ],
     nodes: [
       {
         id: 'engineer:shakthi',
@@ -186,7 +253,7 @@ export function createDemoPodGraph(podId: string): PodGraph {
         source: 'collision:auth',
         target: 'intervention:sync-pr',
         kind: 'warns',
-        label: 'nudges',
+        label: 'routes',
         strength: 0.9,
       },
       {

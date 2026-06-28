@@ -194,6 +194,9 @@ sequenceDiagram
 | [`docs/livekit.md`](docs/livekit.md)           | LiveKit notes and room model              |
 | [`docs/gemini.md`](docs/gemini.md)             | Gemini vision and voice notes             |
 | [`docs/mongodb.md`](docs/mongodb.md)           | MongoDB memory design                     |
+| [`docs/continual-learning/`](docs/continual-learning/) | Active team-memory learning loop          |
+| [`docs/graph-discovery/`](docs/graph-discovery/)       | Active MongoDB graph materialization      |
+| [`docs/agent-learning/`](docs/agent-learning/)         | Planned narrow strategy-version layer     |
 | [`docs/digitalocean.md`](docs/digitalocean.md) | Deployment notes                          |
 | [`docs/demo-setup.md`](docs/demo-setup.md)     | Demo laptop and stage checklist           |
 

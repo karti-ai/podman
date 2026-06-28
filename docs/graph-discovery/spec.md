@@ -1,7 +1,7 @@
 # Graph Discovery Spec
 
-Status: draft  
-Scope: how PodMan discovers graph nodes, edges, risk paths, and learning paths from MongoDB  
+Status: demo-backed / active
+Scope: how PodMan discovers graph nodes, edges, risk paths, and learning paths from MongoDB
 Owner: graph discovery / Team memory observatory
 
 ## Purpose
@@ -17,6 +17,20 @@ The graph must answer:
 3. Where is the risk?
 4. What did PodMan do?
 5. What outcome changed memory?
+
+## What Is Implemented Now
+
+- Live materializer first: build from current MongoDB records.
+- Seeded graph second: read `team_model.graph` and mirrored graph collections.
+- Demo fallback third: return a grounded demo graph when live data is empty or
+  unavailable.
+- Reachability uses MongoDB `$graphLookup` over `graph_edges`.
+
+## What Is Intentionally Cut
+
+- A graph database migration.
+- Whole-history rendering as the default view.
+- Claims that seeded graph data is live learning.
 
 ## Source Data
 
@@ -143,4 +157,3 @@ Optional metrics:
 - Every selected node can explain why it matters.
 - Activity stream matches graph events.
 - Graph can be rebuilt from MongoDB source records.
-

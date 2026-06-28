@@ -15,15 +15,37 @@ export type {
   SuggestedActionKind,
 } from './intervention.js';
 export * from './messages.js';
-export type { HermesMessage } from './messages.js';
+export type { HermesMessage, LiveConversationEvent } from './messages.js';
 export type {
   PodGraph,
   PodGraphNode,
   PodGraphEdge,
   PodGraphMetric,
+  PodLearningLoop,
+  PodLearningLoopStep,
+  PodLearningLoopStepKey,
+  PodLearningLoopStepStatus,
+  PodGraphActivity,
+  PodGraphActivityKind,
   PodGraphNodeKind,
   PodGraphEdgeKind,
   PodGraphNodeStatus,
   GraphNodeDoc,
   GraphEdgeDoc,
 } from './graph.js';
+export type {
+  AgentRun,
+  AgentRunStatus,
+  AgentTraceEvent,
+  StrategyVersion,
+  StrategyVersionKind,
+  StrategyVersionStatus,
+  LearningProposal,
+  LearningProposalStatus,
+} from './agent-learning.js';
+export type {
+  MemberWorkHistory,
+  MemberWorkHistoryEvent,
+  MemberWorkHistoryFile,
+  MemberWorkHistorySource,
+} from './member-history.js';

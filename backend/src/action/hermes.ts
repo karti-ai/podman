@@ -5,6 +5,7 @@ import type { Collision, DataMessage, HermesMessage, Intervention } from '@podma
 import { DATA_TOPIC } from '@podman/shared';
 import { env } from '../env.js';
 import { speak } from '../voice/live.js';
+import { notifyCriticalLiveConversations } from '../live-conversation/sessions.js';
 
 const encoder = new TextEncoder();
 
@@ -54,7 +55,10 @@ export async function publishHermesIntervention(
     topic: DATA_TOPIC,
   });
   await publishHermesMessage(room, collision, intervention);
-  if (voiceLine) await speak(room, voiceLine);
+  void notifyCriticalLiveConversations(collision, intervention, voiceLine).catch((err) =>
+    console.warn(`[live-conversation] critical notify failed: ${(err as Error).message}`),
+  );
+  if (voiceLine) await speak(room, voiceLine, { priority: 'critical' });
 }
 
 async function hermesToken(roomName: string): Promise<string> {

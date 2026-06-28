@@ -1,8 +1,10 @@
 # Continual-Learning Graph Spec
 
-> Owner: graph data + visualization. Status: demo-backed (live `team_model` reads land later).
+> Owner: graph data + visualization. Status: demo-backed / active.
 > Satisfies the documentation-first gate for the `backend/src/graph/*` and
 > `frontend/src/components/GraphView.tsx` files.
+>
+> Canonical module docs live in [`docs/graph-discovery/`](graph-discovery/).
 
 ## What this is (and is NOT)
 
@@ -26,7 +28,9 @@ The graph lives in two places, both keyed by `podId`:
    { podId, graph: PodGraph, updatedAt }
    ```
 
-   `GET /api/pods/:podId/graph` returns `team_model.graph`, or a demo graph when none exists yet.
+   `GET /api/pods/:podId/graph` returns the live materialized graph first, then
+   `team_model.graph`, then a labeled demo graph when neither live nor seeded
+   data exists.
 
 2. **Normalized (for traversal):** the same nodes/edges are mirrored into two collections so
    the model can be walked with MongoDB `$graphLookup` (the graph-database pattern):

@@ -1,6 +1,6 @@
 # Continual Learning Policy
 
-Status: draft  
+Status: demo-backed / active
 Scope: what PodMan may learn about a team
 
 ## Prime Rule
@@ -94,4 +94,3 @@ Delete immediately:
 Seeded data is acceptable only if the demo script is honest about it. Live
 learning requires a live or staged outcome write that visibly updates the graph
 or future decision.
-

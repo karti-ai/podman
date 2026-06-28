@@ -1,7 +1,7 @@
 # Continual Learning Spec
 
-Status: draft  
-Scope: how PodMan learns team memory from live work and outcomes  
+Status: demo-backed / active
+Scope: how PodMan learns team memory from live work and outcomes
 Owner: continual learning / Team memory
 
 ## Purpose
@@ -15,6 +15,22 @@ The visible loop:
 ```text
 observe -> store -> predict -> outcome -> adapt
 ```
+
+## What Is Implemented Now
+
+- `observations`, `collisions`, `interventions`, `outcomes`,
+  `engineer_states`, `team_model`, `graph_nodes`, and `graph_edges` are the
+  current memory truth.
+- Exact signature recall and accepted/dismissed outcomes exist.
+- Accepted real outcomes can produce `learned_from` graph edges and ownership
+  memory.
+- Raw screenshots and recordings are not stored.
+
+## What Is Intentionally Cut
+
+- Full autonomous training.
+- Broad threshold changes from one example.
+- Making vector search required for the demo learning proof.
 
 ## Source Collections
 
@@ -214,4 +230,3 @@ editing, collision, intervention, outcome, learned, agent
 - The Team memory graph can explain the learning loop.
 - Dismissals and false positives are retained.
 - The demo does not rely on raw screenshots or hidden state.
-

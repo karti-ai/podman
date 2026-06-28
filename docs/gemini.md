@@ -1,6 +1,6 @@
 # Gemini Integration Spec
 
-PodMan uses Gemini for two distinct jobs: **vision** (understanding screens) and **voice** (speaking nudges).
+PodMan uses Gemini for two distinct jobs: **vision** (understanding screens) and **voice** (urgent voice cues).
 
 ---
 
@@ -75,7 +75,7 @@ Respond with valid JSON only.
 
 ---
 
-## 3. Nudge Generation — Voice Message
+## 3. Intervention Text Generation
 
 **Model:** `gemini-2.0-flash` (text only)
 
@@ -118,7 +118,7 @@ Respond with the message text only.
 
 **Flow:**
 
-1. Nudge message text generated (step 3)
+1. Intervention message text generated (step 3)
 2. Hermes wraps it in a natural-speaking prompt for Gemini TTS
 3. Gemini returns audio with the configured prebuilt voice
 4. Hermes publishes the audio into the LiveKit room
@@ -135,4 +135,4 @@ Respond with the message text only.
 
 ## Cooldown
 
-Per-pod cooldown of **3 minutes** between nudges. Prevents spam if multiple events fire simultaneously. Implemented in Hermes, not in Gemini.
+Per-pod cooldown of **3 minutes** between urgent voice cues. Prevents spam if multiple risks fire simultaneously. Implemented in Hermes, not in Gemini.

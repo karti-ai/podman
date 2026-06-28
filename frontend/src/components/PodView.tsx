@@ -1,7 +1,8 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
-import { RoomEvent, Track } from 'livekit-client';
+import { Room as LiveKitRoom, RoomEvent, Track } from 'livekit-client';
 import {
   ArrowLeftIcon,
+  BarChart3Icon,
   BrainIcon,
   CheckIcon,
   CircleDotIcon,
@@ -12,6 +13,8 @@ import {
   MicIcon,
   MicOffIcon,
   MonitorUpIcon,
+  PhoneCallIcon,
+  PhoneOffIcon,
   PanelLeftIcon,
   PanelRightIcon,
   RadioTowerIcon,
@@ -24,9 +27,23 @@ import {
   XIcon,
 } from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication } from 'livekit-client';
-import type { Pod, PodActivityEvent, PodActivityKind, PodActivitySource } from '@podman/shared';
+import type {
+  MemberWorkHistory,
+  MemberWorkHistoryEvent,
+  MemberWorkHistoryFile,
+  Pod,
+  PodActivityEvent,
+  PodActivityKind,
+  PodActivitySource,
+} from '@podman/shared';
 import { useBeat } from '../livekit/useBeat.js';
-import { testPodVoice } from '../lib/api.js';
+import {
+  getMemberWorkHistory,
+  startLiveConversation,
+  stopLiveConversation,
+  testPodVoice,
+  type LiveConversationSession,
+} from '../lib/api.js';
 import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
 import LiveWaveform from '@/components/ruixen/live-waveform';
@@ -50,6 +67,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import {
   Sidebar,
@@ -118,6 +142,17 @@ export function PodView({
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [remoteAudioTracks, setRemoteAudioTracks] = useState(0);
   const [micOn, setMicOn] = useState(false);
+  const [historyMember, setHistoryMember] = useState<string | null>(null);
+  const [history, setHistory] = useState<MemberWorkHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [conversationRoom, setConversationRoom] = useState<Room | null>(null);
+  const [conversationSession, setConversationSession] =
+    useState<LiveConversationSession | null>(null);
+  const [conversationState, setConversationState] = useState<
+    'idle' | 'connecting' | 'listening' | 'speaking' | 'interrupted' | 'error'
+  >('idle');
+  const [conversationNote, setConversationNote] = useState<string | null>(null);
   const [leftStreamOpen, setLeftStreamOpen] = useState(() =>
     readStoredBool('podman.myStreamOpen', true),
   );
@@ -130,6 +165,7 @@ export function PodView({
 
   const audioRef = useRef<HTMLDivElement>(null);
   const audioElementsRef = useRef(new Map<string, HTMLElement>());
+  const conversationAudioElementsRef = useRef(new Map<string, HTMLElement>());
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const onLeaveRef = useRef(onLeave);
   onLeaveRef.current = onLeave;
@@ -213,6 +249,103 @@ export function PodView({
     };
   }, [room, me]);
 
+  useEffect(() => {
+    if (!conversationRoom) return;
+    const attachAudio = (track: RemoteTrack, pub: RemoteTrackPublication) => {
+      if (track.kind !== Track.Kind.Audio || !audioRef.current) return;
+      const key = `conversation:${pub.trackSid || track.sid || track.mediaStreamTrack.id}`;
+      if (conversationAudioElementsRef.current.has(key)) return;
+      const element = track.attach();
+      element.autoplay = true;
+      conversationAudioElementsRef.current.set(key, element);
+      audioRef.current.appendChild(element);
+      setRemoteAudioTracks(audioElementsRef.current.size + conversationAudioElementsRef.current.size);
+    };
+    const removeAudio = (track: RemoteTrack, pub?: RemoteTrackPublication) => {
+      const key = `conversation:${pub?.trackSid || track.sid || track.mediaStreamTrack.id}`;
+      const attached = conversationAudioElementsRef.current.get(key);
+      if (attached) {
+        attached.remove();
+        conversationAudioElementsRef.current.delete(key);
+        setRemoteAudioTracks(
+          audioElementsRef.current.size + conversationAudioElementsRef.current.size,
+        );
+      }
+      track.detach().forEach((el) => el.remove());
+    };
+    const refreshState = () => {
+      const agentSpeaking = Array.from(conversationRoom.remoteParticipants.values()).some(
+        (participant) => participant.isSpeaking,
+      );
+      setConversationState((current) =>
+        current === 'connecting' || current === 'error'
+          ? current
+          : agentSpeaking
+            ? 'speaking'
+            : 'listening',
+      );
+    };
+    const onData = (payload: Uint8Array) => {
+      try {
+        const msg = JSON.parse(new TextDecoder().decode(payload)) as {
+          type?: string;
+          event?: { interrupt?: boolean; summary?: string };
+        };
+        if (msg.type === 'LIVE_CONVERSATION_EVENT') {
+          setConversationState(msg.event?.interrupt ? 'interrupted' : 'listening');
+          if (msg.event?.summary) setConversationNote(msg.event.summary);
+        }
+      } catch {
+        // Ignore non-PodMan private-room data.
+      }
+    };
+
+    conversationRoom
+      .on(RoomEvent.TrackSubscribed, attachAudio)
+      .on(RoomEvent.TrackUnsubscribed, removeAudio)
+      .on(RoomEvent.ActiveSpeakersChanged, refreshState)
+      .on(RoomEvent.DataReceived, onData)
+      .on(RoomEvent.Disconnected, () => setConversationState('idle'));
+    refreshState();
+
+    return () => {
+      conversationRoom
+        .off(RoomEvent.TrackSubscribed, attachAudio)
+        .off(RoomEvent.TrackUnsubscribed, removeAudio)
+        .off(RoomEvent.ActiveSpeakersChanged, refreshState)
+        .off(RoomEvent.DataReceived, onData);
+      conversationAudioElementsRef.current.forEach((el) => el.remove());
+      conversationAudioElementsRef.current.clear();
+      setRemoteAudioTracks(audioElementsRef.current.size);
+    };
+  }, [conversationRoom]);
+
+  useEffect(() => {
+    if (!historyMember) {
+      setHistory(null);
+      setHistoryError(null);
+      setHistoryLoading(false);
+      return;
+    }
+    let alive = true;
+    setHistory(null);
+    setHistoryError(null);
+    setHistoryLoading(true);
+    getMemberWorkHistory(team.id, historyMember)
+      .then((next) => {
+        if (alive) setHistory(next);
+      })
+      .catch((e) => {
+        if (alive) setHistoryError((e as Error).message);
+      })
+      .finally(() => {
+        if (alive) setHistoryLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [team.id, historyMember]);
+
   async function enableSound() {
     primeSpeech(); // unlock browser voice from this gesture
     if (!room) return;
@@ -246,6 +379,12 @@ export function PodView({
   }, []);
 
   useEffect(() => {
+    return () => {
+      void conversationRoom?.disconnect();
+    };
+  }, [conversationRoom]);
+
+  useEffect(() => {
     localStorage.setItem('podman.myStreamOpen', String(leftStreamOpen));
   }, [leftStreamOpen]);
 
@@ -275,6 +414,50 @@ export function PodView({
       setNote(`PodMan voice test failed: ${(e as Error).message}`);
     } finally {
       setTestingVoice(false);
+    }
+  }
+
+  async function toggleLiveConversation() {
+    setNote(null);
+    setConversationNote(null);
+    if (conversationRoom && conversationSession) {
+      const endingRoom = conversationRoom;
+      const endingSession = conversationSession;
+      setConversationRoom(null);
+      setConversationSession(null);
+      setConversationState('idle');
+      try {
+        await endingRoom.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+        await endingRoom.disconnect();
+        await stopLiveConversation(team.id, endingSession.sessionId).catch(() => {});
+      } catch (e) {
+        setNote(`Could not stop live conversation: ${(e as Error).message}`);
+      }
+      return;
+    }
+
+    setConversationState('connecting');
+    try {
+      primeSpeech();
+      await room?.startAudio().catch(() => {});
+      const session = await startLiveConversation(team.id, { identity: me, displayName: me });
+      const privateRoom = new LiveKitRoom({ adaptiveStream: true, dynacast: true });
+      privateRoom.on(RoomEvent.Disconnected, () => {
+        setConversationRoom(null);
+        setConversationSession(null);
+        setConversationState('idle');
+      });
+      await privateRoom.connect(session.url, session.token);
+      await privateRoom.startAudio().catch(() => {});
+      await privateRoom.localParticipant.setMicrophoneEnabled(true);
+      setConversationSession(session);
+      setConversationRoom(privateRoom);
+      setConversationState('listening');
+    } catch (e) {
+      setConversationState('error');
+      setConversationRoom(null);
+      setConversationSession(null);
+      setNote(`Live conversation failed: ${(e as Error).message}`);
     }
   }
 
@@ -480,7 +663,11 @@ export function PodView({
                     ) : (
                       <div className="grid gap-2 md:grid-cols-2">
                         {participants.map((p) => (
-                          <Participant key={p.id} participant={p} />
+                          <Participant
+                            key={p.id}
+                            participant={p}
+                            onOpenHistory={setHistoryMember}
+                          />
                         ))}
                       </div>
                     )}
@@ -584,6 +771,63 @@ export function PodView({
 
                 <Card>
                   <CardHeader>
+                    <CardTitle>Live Conversation</CardTitle>
+                    <CardDescription>Private voice channel with PodMan context.</CardDescription>
+                    <CardAction>
+                      <Badge
+                        variant={conversationRoom ? 'default' : 'secondary'}
+                        className="rounded-md"
+                      >
+                        {conversationRoom ? 'live' : 'off'}
+                      </Badge>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4">
+                    <Button
+                      onClick={() => void toggleLiveConversation()}
+                      disabled={!room || conversationState === 'connecting'}
+                      variant={conversationRoom ? 'outline' : 'default'}
+                      data-testid="live-conversation-toggle"
+                    >
+                      {conversationRoom ? (
+                        <PhoneOffIcon data-icon="inline-start" />
+                      ) : (
+                        <PhoneCallIcon data-icon="inline-start" />
+                      )}
+                      {conversationState === 'connecting'
+                        ? 'Connecting'
+                        : conversationRoom
+                          ? 'Stop Live Conversation'
+                          : 'Start Live Conversation'}
+                    </Button>
+                    <div className="grid gap-2 text-sm">
+                      <StatusLine
+                        label="Mode"
+                        value={conversationRoom ? 'private 1:1 room' : 'not started'}
+                      />
+                      <StatusLine
+                        label="State"
+                        value={conversationState === 'idle' ? 'ready' : conversationState}
+                      />
+                      <StatusLine
+                        label="Context"
+                        value={conversationRoom ? 'synced on demand' : 'waiting'}
+                      />
+                    </div>
+                    {conversationNote && (
+                      <div className="rounded-lg border border-dashed p-3">
+                        <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <TriangleAlertIcon className="size-3.5" />
+                          Live interruption
+                        </div>
+                        <p className="text-sm leading-6">{conversationNote}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
                     <CardTitle>Status</CardTitle>
                     <CardDescription>Connection, media, and agent presence.</CardDescription>
                   </CardHeader>
@@ -624,6 +868,15 @@ export function PodView({
               data-testid="livekit-audio-sink"
               className="pointer-events-none fixed size-px overflow-hidden opacity-0"
             />
+            <WorkHistoryDialog
+              member={historyMember}
+              history={history}
+              loading={historyLoading}
+              error={historyError}
+              onOpenChange={(open) => {
+                if (!open) setHistoryMember(null);
+              }}
+            />
           </div>
         </SidebarInset>
         <ActivitySidebar
@@ -655,7 +908,13 @@ function Metric({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function Participant({ participant }: { participant: PInfo }) {
+function Participant({
+  participant,
+  onOpenHistory,
+}: {
+  participant: PInfo;
+  onOpenHistory: (member: string) => void;
+}) {
   return (
     <div
       className={cn(
@@ -673,9 +932,206 @@ function Participant({ participant }: { participant: PInfo }) {
           <p className="text-xs text-muted-foreground">{participant.isLocal ? 'you' : 'remote'}</p>
         </div>
       </div>
-      <Badge variant={participant.speaking ? 'default' : 'secondary'} className="rounded-md">
-        {participant.speaking ? 'speaking' : 'connected'}
-      </Badge>
+      <div className="flex shrink-0 items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onOpenHistory(participant.name)}
+              aria-label={`${participant.name} work history`}
+            >
+              <BarChart3Icon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Work history</TooltipContent>
+        </Tooltip>
+        <Badge variant={participant.speaking ? 'default' : 'secondary'} className="rounded-md">
+          {participant.speaking ? 'speaking' : 'connected'}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+function WorkHistoryDialog({
+  member,
+  history,
+  loading,
+  error,
+  onOpenChange,
+}: {
+  member: string | null;
+  history: MemberWorkHistory | null;
+  loading: boolean;
+  error: string | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={!!member} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88svh] overflow-y-auto sm:max-w-[760px]">
+        <DialogHeader>
+          <DialogTitle>{member ? `${member}'s recent work` : 'Recent work'}</DialogTitle>
+          <DialogDescription>
+            Last {history?.windowHours ?? 24} hours from MongoDB observations and git state.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading && (
+          <div className="grid min-h-72 place-items-center rounded-lg border bg-muted/20">
+            <div className="text-sm text-muted-foreground">Loading history</div>
+          </div>
+        )}
+
+        {error && !loading && (
+          <Alert>
+            <TriangleAlertIcon />
+            <AlertTitle>History unavailable</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {history && !loading && !error && (
+          <div className="flex flex-col gap-5">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <HistoryStat label="Files" value={history.totals.files} />
+              <HistoryStat label="Screen logs" value={history.totals.observations} />
+              <HistoryStat label="Git changes" value={history.totals.gitChanges} />
+            </div>
+
+            {history.files.length ? (
+              <>
+                <section className="rounded-lg border bg-muted/15 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium">Recent files</h3>
+                    <Badge variant="secondary" className="rounded-md">
+                      {history.files.length}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {history.files.map((file) => (
+                      <FileHistoryRow
+                        key={file.file}
+                        file={file}
+                        max={maxFileScore(history.files)}
+                      />
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-lg border bg-muted/15 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium">Timeline</h3>
+                    <Badge variant="outline" className="rounded-md">
+                      {history.timeline.length}
+                    </Badge>
+                  </div>
+                  <HistoryTimeline events={history.timeline} />
+                </section>
+              </>
+            ) : (
+              <Empty className="min-h-72 border-0 p-0">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <BarChart3Icon />
+                  </EmptyMedia>
+                  <EmptyTitle>No recent work history</EmptyTitle>
+                  <EmptyDescription>
+                    MongoDB has no recent screen observations or git changes for this member.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HistoryStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 font-mono text-lg font-medium">{value}</p>
+    </div>
+  );
+}
+
+function maxFileScore(files: MemberWorkHistoryFile[]): number {
+  return Math.max(1, ...files.map((file) => file.observations + file.gitChanges));
+}
+
+function FileHistoryRow({ file, max }: { file: MemberWorkHistoryFile; max: number }) {
+  const score = file.observations + file.gitChanges;
+  const width = `${Math.max(8, Math.round((score / max) * 100))}%`;
+  return (
+    <div className="grid gap-2">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-mono text-sm font-medium">{file.file}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {file.activities[0] ?? `${timeLabel(file.lastSeenAt)} ago`}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {file.current && (
+            <Badge variant="default" className="rounded-md px-1.5 py-0 text-[0.68rem]">
+              current
+            </Badge>
+          )}
+          <Badge variant="secondary" className="rounded-md px-1.5 py-0 text-[0.68rem]">
+            {score}
+          </Badge>
+        </div>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary"
+          style={{ width }}
+          aria-label={`${score} recent work signals`}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-[0.68rem] text-muted-foreground">
+        <span>{file.observations} screen</span>
+        <span>{file.gitChanges} git</span>
+        {file.confidenceAvg !== null && <span>{Math.round(file.confidenceAvg * 100)}% conf</span>}
+      </div>
+    </div>
+  );
+}
+
+function HistoryTimeline({ events }: { events: MemberWorkHistoryEvent[] }) {
+  if (!events.length) {
+    return <p className="text-sm text-muted-foreground">No timeline entries.</p>;
+  }
+  return (
+    <div className="relative flex flex-col gap-3 pl-4 before:absolute before:left-[0.31rem] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-border">
+      {events.slice(0, 18).map((event) => {
+        const Icon = event.source === 'git' ? GitBranchIcon : MonitorUpIcon;
+        return (
+          <div key={event.id} className="relative grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2">
+            <span className="absolute -left-4 top-2 size-2 rounded-full bg-primary" />
+            <div className="mt-0.5 flex size-6 items-center justify-center rounded-md border bg-background text-muted-foreground">
+              <Icon className="size-3.5" />
+            </div>
+            <div className="min-w-0 rounded-md border bg-background px-3 py-2">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <p className="line-clamp-1 min-w-0 break-words text-sm font-medium">
+                  {event.title}
+                </p>
+                <time className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                  {timeLabel(event.at)}
+                </time>
+              </div>
+              <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{event.file}</p>
+              {event.detail && (
+                <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{event.detail}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

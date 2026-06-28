@@ -114,6 +114,43 @@ async function verifyApi() {
     fail('Hermes notify endpoint returned unexpected payload');
   }
 
+  const liveConversation = await json(
+    await doFetch(
+      `${baseUrl}/api/pods/${encodeURIComponent(created.id)}/live-conversation/start`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ identity: 'Alice', displayName: 'Alice' }),
+      },
+    ),
+  );
+  if (
+    typeof liveConversation.token !== 'string' ||
+    liveConversation.token.split('.').length !== 3 ||
+    typeof liveConversation.room !== 'string' ||
+    !liveConversation.room.includes('podman-live:')
+  ) {
+    fail('live conversation start did not return a private room JWT');
+  }
+  const liveStatus = await json(
+    await doFetch(
+      `${baseUrl}/api/pods/${encodeURIComponent(
+        created.id,
+      )}/live-conversation/status?identity=Alice`,
+    ),
+  );
+  if (liveStatus.active?.sessionId !== liveConversation.sessionId) {
+    fail('live conversation status did not return the active session');
+  }
+  await json(
+    await doFetch(
+      `${baseUrl}/api/pods/${encodeURIComponent(
+        created.id,
+      )}/live-conversation/${encodeURIComponent(liveConversation.sessionId)}/stop`,
+      { method: 'POST' },
+    ),
+  );
+
   await json(
     await doFetch(`${baseUrl}/api/pods/${encodeURIComponent(created.id)}`, { method: 'DELETE' }),
   );
@@ -282,6 +319,7 @@ try {
           'token',
           'pod-crud',
           'hermes-notify',
+          'live-conversation-session',
           'collision',
           'memory-recall',
           'graph',

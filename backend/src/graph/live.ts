@@ -3,6 +3,8 @@ import type {
   PodGraphNode,
   PodGraphEdge,
   PodGraphMetric,
+  PodLearningLoop,
+  PodGraphActivity,
   PodGraphNodeKind,
   PodGraphEdgeKind,
   PodGraphNodeStatus,
@@ -148,6 +150,77 @@ function layout(nodes: PodGraphNode[]): void {
 
 const SEVERITY_WEIGHT: Record<string, number> = { info: 0.4, warn: 0.7, critical: 1 };
 
+function buildLoop(input: {
+  observations: number;
+  gitStates: number;
+  collisions: number;
+  interventions: number;
+  outcomes: number;
+  acceptedReal: number;
+  learnedEdges: number;
+}): PodLearningLoop {
+  const stored = input.observations + input.gitStates + input.interventions + input.outcomes;
+  return {
+    activeStep:
+      input.acceptedReal > 0
+        ? 'adapt'
+        : input.outcomes > 0
+          ? 'outcome'
+          : input.collisions > 0
+            ? 'predict'
+            : input.observations + input.gitStates > 0
+              ? 'store'
+              : 'observe',
+    steps: [
+      {
+        key: 'observe',
+        label: 'Observe',
+        value: String(input.observations + input.gitStates),
+        detail: 'Recent vision observations plus local git-state reports.',
+        status: input.observations + input.gitStates > 0 ? 'complete' : 'quiet',
+      },
+      {
+        key: 'store',
+        label: 'Store',
+        value: String(stored),
+        detail: 'MongoDB records available to recall for this pod.',
+        status: stored > 0 ? 'complete' : 'quiet',
+      },
+      {
+        key: 'predict',
+        label: 'Predict',
+        value: String(input.collisions),
+        detail: 'Distinct collision signatures detected from live work.',
+        status: input.collisions > 0 ? 'complete' : 'quiet',
+      },
+      {
+        key: 'outcome',
+        label: 'Outcome',
+        value: String(input.outcomes),
+        detail: 'Accepted and dismissed intervention outcomes.',
+        status: input.outcomes > 0 ? 'complete' : 'quiet',
+      },
+      {
+        key: 'adapt',
+        label: 'Adapt',
+        value: String(input.learnedEdges),
+        detail: 'Learned graph edges created from accepted real outcomes.',
+        status: input.acceptedReal > 0 ? 'complete' : 'planned',
+      },
+    ],
+  };
+}
+
+function pushActivity(
+  activity: PodGraphActivity[],
+  item: PodGraphActivity,
+  seen: Set<string>,
+): void {
+  if (seen.has(item.id)) return;
+  seen.add(item.id);
+  activity.push(item);
+}
+
 export async function materializePodGraph(podId: string): Promise<PodGraph | null> {
   const c = await collections();
   const db = await getDb();
@@ -174,6 +247,8 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
   }
 
   const b: Builder = { nodes: new Map(), edges: new Map() };
+  const activity: PodGraphActivity[] = [];
+  const activityIds = new Set<string>();
   const now = Date.now();
 
   // 1. Baseline engineer nodes from the roster.
@@ -193,6 +268,18 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     if (isFilePath(file)) {
       const f = upsertNode(b, 'file', file, { label: shortLabel(file), summary: file });
       upsertEdge(b, eng, f, 'editing', o.activity ?? 'edits', Math.max(0.4, o.confidence ?? 0.5));
+      pushActivity(
+        activity,
+        {
+          id: `editing:${o.engineerId}:${file}:${String(o.observedAt ?? '')}`,
+          at: String(o.observedAt ?? new Date().toISOString()),
+          kind: 'editing',
+          title: `${o.engineerId} editing ${shortLabel(file)}`,
+          detail: o.activity ?? 'Vision observed active work.',
+          nodeId: f,
+        },
+        activityIds,
+      );
     }
   }
 
@@ -251,6 +338,18 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
       const eng = upsertNode(b, 'engineer', name, { label: name });
       upsertEdge(b, eng, cNode, 'collides', 'in', SEVERITY_WEIGHT[col.severity] ?? 0.7);
     }
+    pushActivity(
+      activity,
+      {
+        id: `collision:${col.id}`,
+        at: col.detectedAt,
+        kind: 'collision',
+        title: `Collision risk on ${shortLabel(file)}`,
+        detail: `${col.engineers.join(' + ')} converged on ${file}.`,
+        nodeId: cNode,
+      },
+      activityIds,
+    );
     sigToNode.set(sig, cNode);
     colNodeFor.set(col.id, cNode);
     if (!isPriority) distinctCollisions++;
@@ -293,7 +392,19 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
             : 'watch',
       summary: iv.message,
     });
-    upsertEdge(b, colNode, ivNode, 'warns', 'nudges', 0.85);
+    upsertEdge(b, colNode, ivNode, 'warns', 'routes', 0.85);
+    pushActivity(
+      activity,
+      {
+        id: `intervention:${iv.id}`,
+        at: iv.createdAt,
+        kind: 'intervention',
+        title: `Intervention: ${b.nodes.get(ivNode)?.label ?? iv.kind}`,
+        detail: iv.message,
+        nodeId: ivNode,
+      },
+      activityIds,
+    );
     ivNodeForCol.set(colNode, ivNode);
   }
 
@@ -316,8 +427,34 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     if (ivNode) {
       const ivObj = b.nodes.get(ivNode);
       if (ivObj) ivObj.status = 'learned';
+      const before = b.edges.size;
       upsertEdge(b, ivNode, engNode, 'learned_from', `learned: owns ${file}`, 0.6);
+      const edgeId = `${'learned_from'}:${ivNode}->${engNode}`;
+      pushActivity(
+        activity,
+        {
+          id: `learned:${out.interventionId}:${owner}:${file}`,
+          at: out.recordedAt,
+          kind: 'learned',
+          title: `Learned ${owner} owns ${shortLabel(file)}`,
+          detail: 'Accepted real outcome created a durable learned_from path.',
+          nodeId: engNode,
+          edgeId: before === b.edges.size ? undefined : edgeId,
+        },
+        activityIds,
+      );
     }
+    pushActivity(
+      activity,
+      {
+        id: `outcome:${out.interventionId}:${out.recordedAt}`,
+        at: out.recordedAt,
+        kind: 'outcome',
+        title: out.accepted ? 'Outcome accepted' : 'Outcome dismissed',
+        detail: out.wasRealCollision ? 'Marked as a real collision.' : 'Marked as noise.',
+      },
+      activityIds,
+    );
   }
 
   // Prune test-artifact engineers, then anything left orphaned by that.
@@ -389,6 +526,8 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
       detail: 'Interventions accepted this session.',
     },
   ];
+  const learnedEdges = [...b.edges.values()].filter((e) => e.kind === 'learned_from').length;
+  activity.sort((a, z) => String(z.at).localeCompare(String(a.at)));
 
   return {
     podId,
@@ -396,5 +535,15 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     nodes,
     edges: [...b.edges.values()],
     metrics,
+    loop: buildLoop({
+      observations: observations.length,
+      gitStates: gitStates.size,
+      collisions: riskPaths,
+      interventions: interventionDocs.length,
+      outcomes: totalOutcomes,
+      acceptedReal,
+      learnedEdges,
+    }),
+    activity: activity.slice(0, 12),
   };
 }

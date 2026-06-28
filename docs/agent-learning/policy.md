@@ -1,6 +1,6 @@
 # Agent Learning Policy
 
-Status: draft  
+Status: planned / narrow v1
 Scope: guardrails for recursive self-improvement
 
 ## Prime Rule
@@ -81,4 +81,3 @@ Reject and retain the candidate when:
 Seeded strategy versions are acceptable when labeled as demo-backed. Do not claim
 a strategy was learned live unless a run and outcome actually created the
 promotion evidence.
-

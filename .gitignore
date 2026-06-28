@@ -35,6 +35,8 @@ Thumbs.db
 coverage/
 .cache/
 .turbo/
+__pycache__/
+*.py[cod]
 
 # Ramis
 .remember/

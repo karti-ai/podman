@@ -48,6 +48,41 @@ export interface PodGraphMetric {
   detail: string;
 }
 
+export type PodLearningLoopStepKey = 'observe' | 'store' | 'predict' | 'outcome' | 'adapt';
+
+export type PodLearningLoopStepStatus = 'quiet' | 'active' | 'complete' | 'planned';
+
+export interface PodLearningLoopStep {
+  key: PodLearningLoopStepKey;
+  label: string;
+  value: string;
+  detail: string;
+  status: PodLearningLoopStepStatus;
+}
+
+export interface PodLearningLoop {
+  activeStep: PodLearningLoopStepKey;
+  steps: PodLearningLoopStep[];
+}
+
+export type PodGraphActivityKind =
+  | 'editing'
+  | 'collision'
+  | 'intervention'
+  | 'outcome'
+  | 'learned'
+  | 'agent';
+
+export interface PodGraphActivity {
+  id: string;
+  at: string;
+  kind: PodGraphActivityKind;
+  title: string;
+  detail: string;
+  nodeId?: string;
+  edgeId?: string;
+}
+
 /** A point-in-time render of a pod's team_model. */
 export interface PodGraph {
   podId: string;
@@ -56,6 +91,8 @@ export interface PodGraph {
   nodes: PodGraphNode[];
   edges: PodGraphEdge[];
   metrics: PodGraphMetric[];
+  loop?: PodLearningLoop;
+  activity?: PodGraphActivity[];
 }
 
 /** One node as a standalone document in the `graph_nodes` collection. */

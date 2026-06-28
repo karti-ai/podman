@@ -4,7 +4,8 @@
 > strategy, public interfaces, risks, sponsor story, and next build order.
 >
 > If this file conflicts with `README.md`, `docs/idea.md`, `docs/livekit.md`,
-> `docs/gemini.md`, `docs/mongodb.md`, `docs/digitalocean.md`,
+> `docs/gemini.md`, `docs/mongodb.md`, `docs/continual-learning/`,
+> `docs/graph-discovery/`, `docs/agent-learning/`, `docs/digitalocean.md`,
 > `docs/demo-setup.md`, or `docs/superpowers/specs/*`, follow this file and
 > treat the older docs as reference material to reconcile later.
 
@@ -293,6 +294,8 @@ scripts together.
 - `POST /api/sync-pr`
 - `POST /api/outcome`
 - `GET /api/memory/stats`
+- `GET /api/pods/:id/graph`
+- `GET /api/pods/:id/graph/reach/:nodeId`
 - `GET /api/pods`
 - `POST /api/pods`
 - `GET /api/pods/:id`
@@ -471,8 +474,8 @@ artifact.
    - Escalate to voice only when urgent.
 
 10. **Action artifact**
-    - If demo uses same-file collision, click the card to open a real draft sync
-      PR or visible GitHub artifact.
+    - If demo uses same-file collision, click the card to open a real sync PR
+      artifact or visible GitHub artifact.
     - If demo uses research recommendation, show the accepted recommendation and
       memory outcome instead.
 
@@ -606,6 +609,16 @@ MongoDB is the learning proof:
 - exact recall is the MVP,
 - Voyage + Atlas Vector Search is the stronger sponsor-grade version after exact
   recall works.
+
+Canonical docs:
+
+- [`docs/continual-learning/`](continual-learning/) owns team memory and
+  outcome-backed recall.
+- [`docs/graph-discovery/`](graph-discovery/) owns graph materialization,
+  hygiene, and `$graphLookup` reachability.
+- [`docs/agent-learning/`](agent-learning/) owns the planned narrow
+  strategy-version layer. Full autonomous promotion is not implemented unless
+  backed by records.
 
 ### DigitalOcean
 

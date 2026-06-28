@@ -1,4 +1,10 @@
-import type { InterventionOutcome, Pod, PodActivityEvent, PodInput } from '@podman/shared';
+import type {
+  InterventionOutcome,
+  MemberWorkHistory,
+  Pod,
+  PodActivityEvent,
+  PodInput,
+} from '@podman/shared';
 
 const BACKEND_URL =
   import.meta.env.VITE_BACKEND_URL ||
@@ -11,6 +17,19 @@ export interface MemoryStats {
   collisions: number;
   interventions: number;
   outcomes: number;
+}
+
+export interface LiveConversationSession {
+  sessionId: string;
+  podId: string;
+  identity: string;
+  displayName: string;
+  room: string;
+  url: string;
+  token: string;
+  startedAt: string;
+  lastEventAt?: string;
+  endedAt?: string;
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -85,6 +104,19 @@ export function podActivityStreamUrl(id: string): string {
   return `${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/activity/stream`;
 }
 
+export async function getMemberWorkHistory(
+  podId: string,
+  member: string,
+): Promise<MemberWorkHistory> {
+  return json(
+    await fetch(
+      `${BACKEND_URL}/api/pods/${encodeURIComponent(podId)}/members/${encodeURIComponent(
+        member,
+      )}/history?hours=24&limit=80`,
+    ),
+  );
+}
+
 export async function createPod(input: PodInput): Promise<Pod> {
   return json(
     await fetch(`${BACKEND_URL}/api/pods`, {
@@ -131,6 +163,29 @@ export async function testPodVoice(id: string): Promise<void> {
     }),
   });
   if (!res.ok) throw new Error(`voice test failed: ${res.status}`);
+}
+
+export async function startLiveConversation(
+  podId: string,
+  input: { identity: string; displayName?: string },
+): Promise<LiveConversationSession> {
+  return json(
+    await fetch(`${BACKEND_URL}/api/pods/${encodeURIComponent(podId)}/live-conversation/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function stopLiveConversation(podId: string, sessionId: string): Promise<void> {
+  const res = await fetch(
+    `${BACKEND_URL}/api/pods/${encodeURIComponent(
+      podId,
+    )}/live-conversation/${encodeURIComponent(sessionId)}/stop`,
+    { method: 'POST' },
+  );
+  if (!res.ok) throw new Error(`live conversation stop failed: ${res.status}`);
 }
 
 export async function removeMember(id: string, name: string): Promise<Pod> {

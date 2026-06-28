@@ -26,6 +26,10 @@ const encoder = new TextEncoder();
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 let voiceQueue: Promise<void> = Promise.resolve();
 
+export interface SpeakOptions {
+  priority?: 'normal' | 'critical';
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -239,13 +243,21 @@ async function speakAudio(room: Room, message: string): Promise<void> {
  * VOICE_CUE is sent first so clients still get the cue if audio generation or
  * publishing fails.
  */
-export async function speak(room: Room, message: string): Promise<void> {
+export async function speak(room: Room, message: string, options: SpeakOptions = {}): Promise<void> {
   await publishVoiceCue(room, message);
+  if (options.priority === 'critical') {
+    await speakAudio(room, message);
+    return;
+  }
   voiceQueue = voiceQueue.catch(() => {}).then(() => speakAudio(room, message));
   await voiceQueue;
 }
 
-export async function speakInRoom(roomName: string, message: string): Promise<void> {
+export async function speakInRoom(
+  roomName: string,
+  message: string,
+  options: SpeakOptions = {},
+): Promise<void> {
   const room = new Room();
   try {
     const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
@@ -261,7 +273,7 @@ export async function speakInRoom(roomName: string, message: string): Promise<vo
       canPublishData: true,
     });
     await room.connect(env.LIVEKIT_URL, await at.toJwt());
-    await speak(room, message);
+    await speak(room, message, options);
   } finally {
     await room.disconnect().catch(() => {});
   }

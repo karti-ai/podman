@@ -315,6 +315,10 @@ try {
   await podCard.getByPlaceholder('Your name').first().fill(verifyMember);
   await podCard.getByRole('button', { name: 'Join' }).first().click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
+  await page.getByTestId('live-conversation-toggle').waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Start Live Conversation' }).waitFor({
+    timeout: 15_000,
+  });
   if (new URL(page.url()).pathname !== `/${verifyPod.id}`) {
     throw new Error(`join did not update URL to /${verifyPod.id}: ${page.url()}`);
   }

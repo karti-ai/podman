@@ -29,6 +29,8 @@
     "livekit:starter:agent": "cd examples/livekit-gemini-hacker-starter/agent && uv run agent.py dev",
     "livekit:starter:frontend": "cd examples/livekit-gemini-hacker-starter/frontend && pnpm start --hostname 127.0.0.1 --port 3000",
     "livekit:starter:frontend:build": "cd examples/livekit-gemini-hacker-starter/frontend && pnpm build",
+    "livekit:conversation:agent": "cd agents/podman-live-conversation && uv run agent.py dev",
+    "livekit:conversation:test": "cd agents/podman-live-conversation && uv run pytest",
     "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm verify:backend && pnpm verify:frontend",
     "verify:full": "pnpm verify && pnpm verify:infra && pnpm build:container && pnpm verify:containers",
     "verify:backend": "node scripts/verify-backend.mjs",

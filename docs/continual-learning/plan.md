@@ -1,6 +1,6 @@
 # Continual Learning Plan
 
-Status: draft  
+Status: demo-backed / active
 Goal: prove PodMan learns from outcomes in the hackathon demo
 
 ## Must-Have Demo Loop
@@ -66,4 +66,3 @@ Goal: prove PodMan learns from outcomes in the hackathon demo
 - The second similar event behaves differently.
 - Exact MongoDB records prove the loop.
 - The graph remains legible with real data.
-

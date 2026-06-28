@@ -37,9 +37,9 @@ LiveKit is the real-time backbone for PodMan. It handles room presence and voice
 ```ts
 room.on(RoomEvent.DataReceived, (payload, participant) => {
   if (participant?.identity !== 'podman-hermes') return;
-  const nudge = JSON.parse(new TextDecoder().decode(payload));
-  // nudge: { type, message, involvedEngineers, file, sentAt }
-  appendNudgeToFeed(nudge);
+  const intervention = JSON.parse(new TextDecoder().decode(payload));
+  // intervention: COLLISION, HERMES_MESSAGE, VOICE_CUE, ACK, or GIT_REPORT
+  appendInterventionToFeed(intervention);
 });
 ```
 
@@ -57,7 +57,7 @@ room.on(RoomEvent.DataReceived, (payload, participant) => {
 
 **Voice delivery:**
 
-1. Nudge message text is ready (from Gemini text generation)
+1. Urgent intervention text is ready (from Gemini text generation)
 2. Hermes sends a natural-speaking prompt to Gemini TTS
 3. Gemini returns PCM audio using the configured voice
 4. Hermes publishes the audio as a LiveKit microphone-source track
@@ -70,7 +70,7 @@ room.on(RoomEvent.DataReceived, (payload, participant) => {
 **Data channel message (sent alongside audio):**
 
 ```ts
-const nudge = {
+const intervention = {
   type: 'DEPENDENCY_READY' | 'BLOCKER_DETECTED' | 'DUPLICATE_WORK',
   message: string,        // the spoken text
   involvedEngineers: string[],
@@ -78,7 +78,7 @@ const nudge = {
   sentAt: string,         // ISO timestamp
 };
 room.localParticipant.publishData(
-  new TextEncoder().encode(JSON.stringify(nudge)),
+  new TextEncoder().encode(JSON.stringify(intervention)),
   { reliable: true }
 );
 ```

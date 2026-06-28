@@ -27,8 +27,18 @@ import {
 import { getPresence, closeRoom } from './livekit/rooms.js';
 import { loadPodGraph, reachFrom } from './graph/store.js';
 import { listPodActivity } from './activity/store.js';
+import { getMemberWorkHistory } from './activity/member-history.js';
 import { speakInRoom } from './voice/live.js';
 import { notifyHermesInterventionInRoom } from './action/hermes.js';
+import {
+  activeLiveConversation,
+  startLiveConversation,
+  stopLiveConversation,
+} from './live-conversation/sessions.js';
+import {
+  getLiveConversationContext,
+  recordLiveConversationNote,
+} from './live-conversation/context.js';
 import type { Collision, Intervention, InterventionOutcome, SuggestedActionKind } from '@podman/shared';
 
 const app = express();
@@ -185,6 +195,82 @@ app.post('/api/pods/:id/voice-test', async (req, res) => {
   }
 });
 
+app.post('/api/pods/:id/live-conversation/start', async (req, res) => {
+  try {
+    const identity = typeof req.body?.identity === 'string' ? req.body.identity.trim() : '';
+    const displayName =
+      typeof req.body?.displayName === 'string' ? req.body.displayName.trim() : identity;
+    if (!identity) return res.status(400).json({ error: 'identity is required' });
+    const pod = await getPod(req.params.id);
+    if (!pod) return res.status(404).json({ error: 'pod not found' });
+    res.json(await startLiveConversation({ podId: req.params.id, identity, displayName }));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post('/api/pods/:id/live-conversation/:sessionId/stop', async (req, res) => {
+  try {
+    const session = await stopLiveConversation(req.params.id, req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'session not found' });
+    res.json({ ok: true, session });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.get('/api/pods/:id/live-conversation/status', (req, res) => {
+  const identity = typeof req.query.identity === 'string' ? req.query.identity.trim() : '';
+  if (!identity) return res.status(400).json({ error: 'identity is required' });
+  res.json({ active: activeLiveConversation(req.params.id, identity) });
+});
+
+function requireInternalAgent(req: express.Request, res: express.Response): boolean {
+  const expected = env.INTERNAL_AGENT_TOKEN;
+  if (!expected) {
+    res.status(503).json({ error: 'INTERNAL_AGENT_TOKEN is not configured' });
+    return false;
+  }
+  const header = req.header('authorization') ?? '';
+  const actual = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+  if (actual !== expected) {
+    res.status(401).json({ error: 'unauthorized' });
+    return false;
+  }
+  return true;
+}
+
+app.get('/api/internal/pods/:id/live-context', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  try {
+    const identity = typeof req.query.identity === 'string' ? req.query.identity.trim() : '';
+    if (!identity) return res.status(400).json({ error: 'identity is required' });
+    res.json(await getLiveConversationContext(req.params.id, identity));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post('/api/internal/pods/:id/live-conversation/:sessionId/note', async (req, res) => {
+  if (!requireInternalAgent(req, res)) return;
+  try {
+    const note = typeof req.body?.note === 'string' ? req.body.note : '';
+    const identity = typeof req.body?.identity === 'string' ? req.body.identity : undefined;
+    const kind = typeof req.body?.kind === 'string' ? req.body.kind : undefined;
+    res.status(201).json(
+      await recordLiveConversationNote({
+        podId: req.params.id,
+        sessionId: req.params.sessionId,
+        identity,
+        kind,
+        note,
+      }),
+    );
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
 app.post('/api/pods/:id/hermes/notify', async (req, res) => {
   const podId = req.params.id;
   const pod = await getPod(podId);
@@ -256,6 +342,16 @@ app.delete('/api/pods/:id/members/:name', async (req, res) => {
   const pod = await removeMember(req.params.id, req.params.name);
   if (!pod) return res.status(404).json({ error: 'pod not found' });
   res.json(pod);
+});
+
+app.get('/api/pods/:id/members/:name/history', async (req, res) => {
+  try {
+    const hours = Number(req.query.hours ?? 24) || 24;
+    const limit = Number(req.query.limit ?? 80) || 80;
+    res.json(await getMemberWorkHistory(req.params.id, req.params.name, { hours, limit }));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 // --- Continual-learning graph (team_model view) ---

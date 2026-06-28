@@ -1,7 +1,7 @@
 # Agent Learning Spec
 
-Status: draft  
-Scope: how PodMan agents improve their own prompts, policies, detectors, and routing behavior  
+Status: planned / narrow v1
+Scope: how PodMan agents improve their own prompts, policies, detectors, and routing behavior
 Owner: agent learning / recursive self-improvement
 
 ## Purpose
@@ -18,6 +18,20 @@ The demo claim:
 4. Gemini or another agent proposes a narrow strategy change.
 5. The new strategy is versioned.
 6. A later run uses the improved strategy and shows a better result.
+
+## What Is Implemented Now
+
+- Shared TypeScript record shapes exist for the core objects below.
+- Exact signature recall and accepted/dismissed outcomes exist in the team
+  memory loop.
+- No write path currently promotes autonomous strategy changes.
+
+## What Is Intentionally Cut
+
+- Autonomous code rewriting.
+- Full autonomous strategy promotion.
+- Multi-agent strategy debates.
+- Claims that model self-evaluation alone can promote a strategy.
 
 ## Core Objects
 
@@ -182,4 +196,3 @@ Graph discovery may show:
 - Rejected strategies are retained with a reason.
 - Agent traces are append-only.
 - The system can answer: "What changed, why, and did it help?"
-

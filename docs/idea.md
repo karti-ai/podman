@@ -2,7 +2,7 @@
 
 ## One-line value prop
 
-PodMan is a real-time AI team coordination agent that watches consented work signals, maintains live project memory, and proactively notifies collaborators when dependencies, blockers, or handoffs emerge — before anyone has to ask.
+PodMan is a real-time AI team coordination agent that watches consented work signals, maintains live project memory, and proactively coordinates collaborators when collisions, blockers, or handoffs emerge before anyone has to ask.
 
 ---
 
@@ -18,11 +18,11 @@ Slack doesn't help. Stand-ups are too slow. GitHub only knows pushed state.
 
 PodMan is an ambient AI agent that:
 
-1. Watches each engineer's screen via periodic snapshots (consented, browser-native)
+1. Watches each engineer's consented LiveKit screen-share signal
 2. Extracts structured context using Gemini Vision — current file, inferred task, terminal state
-3. Maintains a shared live model of the team in MongoDB Atlas — who is doing what, who owns which files
-4. Detects coordination events: dependency ready, blocker detected, duplicate work
-5. Speaks proactively into the team's LiveKit room — engineers hear PodMan through their earbuds without leaving their editor
+3. Maintains a shared live model in MongoDB Atlas — observations, collisions, interventions, outcomes, and graph memory
+4. Detects coordination risks: same-file collision, blocker detected, duplicate work
+5. Sends the least intrusive intervention first: card, Hermes message, and urgent voice only when needed
 
 **The AI's job is not to chat. It is to notice what teammates miss and say so, exactly when it matters.**
 
@@ -38,21 +38,21 @@ Small software teams: hackathon squads, startup engineering teams, student dev t
 
 - Maintain per-person live context (file, task, terminal)
 - Infer shared project state (who owns what, what's blocked, what's ready)
-- Detect 3 coordination event types:
+- Detect 3 coordination risk types:
   - `DEPENDENCY_READY` — engineer A was waiting on work engineer B just completed
   - `BLOCKER_DETECTED` — engineer appears stuck; another teammate can unblock
   - `DUPLICATE_WORK` — 2+ engineers working on the same file simultaneously
-- Generate a 1–2 sentence proactive voice nudge
-- Deliver it into the LiveKit room as Gemini TTS audio
+- Generate a short intervention message
+- Deliver it as a LiveKit data message, with Gemini TTS audio reserved for urgent escalation
 
 ---
 
 ## How it fits the Continual Learning track
 
-PodMan builds an **ownership map** in MongoDB that persists across sessions:
+PodMan builds outcome-backed team memory in MongoDB that persists across sessions:
 
-- Session 1: PodMan needs 3–5 minutes of screen observations to infer who owns what
-- Session 2+: PodMan already knows. First nudge fires in under 30 seconds.
+- Session 1: PodMan observes work, predicts a collision, sends an intervention, and stores the outcome
+- Session 2+: PodMan recalls the exact signature and changes the graph or behavior
 
 The system gets demonstrably more useful the more it is used, with no user configuration required. That is the track definition met exactly.
 
@@ -60,7 +60,7 @@ The system gets demonstrably more useful the more it is used, with no user confi
 
 ## Architecture (one paragraph)
 
-Each engineer opens a browser PWA on their laptop. The PWA captures live IDE context through LiveKit screen sharing and scheduled local git reports. Hermes, the server-side orchestrator running on DigitalOcean, calls Gemini Vision to extract structured context, writes it to MongoDB Atlas, updates the ownership map, and runs event detection across all active engineers. When a coordination event fires, Hermes generates a short spoken message, asks Gemini TTS for natural audio, and publishes that audio into the team's LiveKit room. Engineers hear PodMan through their earbuds. No Slack. No tab switching. No interruption to the editor flow.
+Each engineer opens a browser PWA on their laptop. The PWA shares live IDE context through LiveKit screen sharing, and the local git watcher writes dirty/unpushed state to MongoDB. The backend agent calls Gemini Vision to extract structured context, writes observations and collisions to MongoDB Atlas, recalls accepted or dismissed outcomes, and routes the smallest useful intervention. Cards and Hermes messages are default; Gemini TTS through LiveKit is reserved for urgent escalation. No Slack. No tab switching. No interruption to the editor flow.
 
 ---
 

@@ -1,6 +1,6 @@
 # Graph Discovery Plan
 
-Status: draft  
+Status: demo-backed / active
 Goal: make MongoDB graph discovery visible as a dynamic learning observatory
 
 ## Must-Have
@@ -66,4 +66,3 @@ Goal: make MongoDB graph discovery visible as a dynamic learning observatory
 - Learned path is visible when data exists.
 - Whole graph mode exists but is not the default.
 - The graph remains backed by MongoDB, not hardcoded mock data.
-

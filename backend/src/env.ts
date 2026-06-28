@@ -22,10 +22,12 @@ export const env = {
   LIVEKIT_API_KEY: req('LIVEKIT_API_KEY'),
   LIVEKIT_API_SECRET: req('LIVEKIT_API_SECRET'),
   LIVEKIT_AGENT_NAME: opt('LIVEKIT_AGENT_NAME'),
+  LIVEKIT_CONVERSATION_AGENT_NAME: opt('LIVEKIT_CONVERSATION_AGENT_NAME', 'podman-live-conversation'),
   // Gemini
   GEMINI_API_KEY: reqAny('GEMINI_API_KEY', ['GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY']),
   GEMINI_VISION_MODEL: opt('GEMINI_VISION_MODEL', 'gemini-2.0-flash'),
   GEMINI_LIVE_MODEL: opt('GEMINI_LIVE_MODEL', 'gemini-3.1-flash-tts-preview'),
+  GEMINI_CONVERSATION_MODEL: opt('GEMINI_CONVERSATION_MODEL', 'gemini-3.1-flash-live-preview'),
   GEMINI_TTS_VOICE: opt('GEMINI_TTS_VOICE', 'Charon'),
   GEMINI_EMBEDDING_MODEL: opt('GEMINI_EMBEDDING_MODEL', 'gemini-embedding-001'),
   // GitHub
@@ -38,6 +40,7 @@ export const env = {
   // Server
   PORT: Number(opt('PORT', '8787')),
   NUDGE_COOLDOWN_MS: Number(opt('NUDGE_COOLDOWN_MS', '180000')),
+  INTERNAL_AGENT_TOKEN: opt('INTERNAL_AGENT_TOKEN'),
 } as const;
 
 export function repoParts(): { owner: string; repo: string } {

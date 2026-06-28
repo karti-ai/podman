@@ -9,6 +9,7 @@ export type DataMessage =
   | { type: 'COLLISION'; collision: Collision; intervention: Intervention }
   | { type: 'HERMES_MESSAGE'; message: HermesMessage }
   | { type: 'VOICE_CUE'; text: string }
+  | { type: 'LIVE_CONVERSATION_EVENT'; event: LiveConversationEvent }
   | { type: 'ACK'; interventionId: string; status: InterventionStatus; note?: string }
   | { type: 'GIT_REPORT'; report: LocalGitReport }
   /** Any participant → the current test-audio owner: stop publishing the shared beat. */
@@ -23,6 +24,20 @@ export interface HermesMessage {
   text: string;
   urgency: 'normal' | 'urgent';
   createdAt: string;
+}
+
+/** Private-room event that lets PodMan interrupt a 1:1 live conversation. */
+export interface LiveConversationEvent {
+  id: string;
+  podId: string;
+  sessionId: string;
+  kind: 'critical_collision' | 'context_refresh';
+  severity: 'info' | 'warn' | 'critical';
+  summary: string;
+  interrupt: boolean;
+  createdAt: string;
+  collisionId?: string;
+  interventionId?: string;
 }
 
 /** Outcome of an intervention — the supervision signal for policy learning. */

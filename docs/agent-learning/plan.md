@@ -1,6 +1,6 @@
 # Agent Learning Plan
 
-Status: draft  
+Status: planned / narrow v1
 Goal: ship a visible recursive self-improvement loop without overbuilding
 
 ## Must-Have
@@ -86,4 +86,3 @@ rejected or open.
 - The changed behavior is visible.
 - The strategy has a parent and evidence.
 - Rejected or failed changes are not deleted.
-
