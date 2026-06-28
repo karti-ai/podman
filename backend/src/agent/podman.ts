@@ -71,15 +71,17 @@ export class PodMan {
 
     await recordCollision(collision);
     const action = preferredAction(collision, prior);
-    const names = collision.engineers.join(' and ');
+    const names = collision.engineers.join(' + ');
+    const shortFile = collision.file.split('/').pop() ?? collision.file;
+
+    // Terse, demo-centered alert — short and direct, not chatty AI prose.
     const message =
-      `${names} are both editing ${collision.file}` +
-      (collision.githubState?.unpushed ? ' and one has unpushed changes.' : '.') +
-      (prior?.priorOutcome?.accepted
-        ? ` I've seen this conflict pattern before; last time the team accepted the ${prior.priorIntervention?.suggestedAction.kind.replaceAll('_', ' ') ?? 'suggested'} action.`
-        : prior
-          ? ` I've seen this conflict pattern before.`
-          : '');
+      `Conflict: ${names} both on ${shortFile}` +
+      (collision.githubState?.unpushed ? ' (unpushed).' : '.') +
+      (prior ? ' Seen before.' : '');
+
+    // Spoken line is even shorter so the voice cue lands fast on stage.
+    const voiceLine = `Conflict. ${names}, both on ${shortFile}.`;
 
     const intervention: Intervention = {
       id: `int_${Date.now()}`,
@@ -106,6 +108,6 @@ export class PodMan {
       topic: DATA_TOPIC,
     });
     await publishHermesMessage(this.room, collision, intervention);
-    if (collision.severity === 'critical') await speak(this.room, message);
+    if (collision.severity === 'critical') await speak(this.room, voiceLine);
   }
 }

@@ -105,6 +105,7 @@ export function PodView({
   const [sharing, setSharing] = useState(false);
   const [playingBeat, setPlayingBeat] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [leftStreamOpen, setLeftStreamOpen] = useState(() =>
     readStoredBool('podman.myStreamOpen', true),
   );
@@ -132,6 +133,11 @@ export function PodView({
     };
     const onAudioGone = (track: RemoteTrack) => track.detach().forEach((el) => el.remove());
     const onDisconnected = () => onLeaveRef.current();
+    // Browsers block autoplay of incoming audio until a user gesture unlocks it.
+    // Surface a button whenever the room can't play sound so PodMan's voice cues
+    // are actually heard.
+    const onPlaybackChanged = () => setAudioBlocked(!room.canPlaybackAudio);
+    onPlaybackChanged();
 
     room
       .on(RoomEvent.ParticipantConnected, refresh)
@@ -139,6 +145,7 @@ export function PodView({
       .on(RoomEvent.ActiveSpeakersChanged, refresh)
       .on(RoomEvent.TrackSubscribed, onAudio)
       .on(RoomEvent.TrackUnsubscribed, onAudioGone)
+      .on(RoomEvent.AudioPlaybackStatusChanged, onPlaybackChanged)
       .on(RoomEvent.Disconnected, onDisconnected);
 
     return () => {
@@ -148,9 +155,20 @@ export function PodView({
         .off(RoomEvent.ActiveSpeakersChanged, refresh)
         .off(RoomEvent.TrackSubscribed, onAudio)
         .off(RoomEvent.TrackUnsubscribed, onAudioGone)
+        .off(RoomEvent.AudioPlaybackStatusChanged, onPlaybackChanged)
         .off(RoomEvent.Disconnected, onDisconnected);
     };
   }, [room, me]);
+
+  async function enableSound() {
+    if (!room) return;
+    try {
+      await room.startAudio();
+      setAudioBlocked(!room.canPlaybackAudio);
+    } catch (e) {
+      setNote(`Could not enable sound: ${(e as Error).message}`);
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -337,6 +355,23 @@ export function PodView({
                 <CircleDotIcon />
                 <AlertTitle>Room notice</AlertTitle>
                 <AlertDescription>{note}</AlertDescription>
+              </Alert>
+            )}
+
+            {room && audioBlocked && (
+              <Alert className="flex items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <Volume2Icon />
+                  <div>
+                    <AlertTitle>Sound is off</AlertTitle>
+                    <AlertDescription>
+                      Click to hear PodMan&apos;s voice alerts.
+                    </AlertDescription>
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => void enableSound()}>
+                  Enable sound
+                </Button>
               </Alert>
             )}
 
