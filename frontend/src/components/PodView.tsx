@@ -20,7 +20,7 @@ import {
 import type { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 import type { Pod, PodActivityEvent, PodActivityKind } from '@podman/shared';
 import { startBeat, type BeatHandle } from '../lib/beat.js';
-import { useInterventions } from '../livekit/useInterventions.js';
+import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
 import LiveWaveform from '@/components/ruixen/live-waveform';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -161,6 +161,7 @@ export function PodView({
   }, [room, me]);
 
   async function enableSound() {
+    primeSpeech(); // unlock browser voice from this gesture
     if (!room) return;
     try {
       await room.startAudio();
@@ -209,6 +210,7 @@ export function PodView({
   }
 
   async function toggleScreen() {
+    primeSpeech(); // unlock browser voice from this gesture too
     if (!room) return;
     setNote(null);
     try {
