@@ -106,6 +106,11 @@ export function podActivityStreamUrl(id: string): string {
   return `${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/activity/stream`;
 }
 
+/** URL of the pod's generated background-music MP3 (looped client-side). */
+export function podMusicUrl(id: string): string {
+  return `${BACKEND_URL}/api/pods/${encodeURIComponent(id)}/music`;
+}
+
 export async function getMemberWorkHistory(
   podId: string,
   member: string,

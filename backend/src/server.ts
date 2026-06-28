@@ -29,6 +29,7 @@ import { loadPodGraph, reachFrom } from './graph/store.js';
 import { listPodActivity } from './activity/store.js';
 import { getMemberWorkHistory } from './activity/member-history.js';
 import { speakInRoom } from './voice/live.js';
+import { getPodMusic } from './voice/music.js';
 import { notifyHermesInterventionInRoom } from './action/hermes.js';
 import {
   activeLiveConversation,
@@ -404,6 +405,21 @@ app.get('/api/internal/hermes/jobs/:jobId/events/stream', async (req, res) => {
     closed = true;
     clearInterval(interval);
   });
+});
+
+// Per-pod background music (Lyria), generated once and cached. Streams MP3 the
+// frontend loops as a pod-wide LiveKit track (replaces the synthesized beat).
+app.get('/api/pods/:id/music', async (req, res) => {
+  try {
+    const pod = await getPod(req.params.id);
+    if (!pod) return res.status(404).json({ error: 'pod not found' });
+    const mp3 = await getPodMusic(pod.id, pod.name);
+    res.set('Content-Type', 'audio/mpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(mp3);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 app.post('/api/pods/:id/hermes/notify', async (req, res) => {

@@ -43,6 +43,7 @@ import {
   abortLiveConversationHermesJob,
   getLiveConversationHermesJob,
   getMemberWorkHistory,
+  podMusicUrl,
   startLiveConversation,
   stopLiveConversation,
   testPodVoice,
@@ -167,7 +168,7 @@ export function PodView({
     readStoredBool('podman.teamStreamOpen', true),
   );
   const { active, hermes, voiceCue, actionUrl, respond } = useInterventions(room);
-  const { beat, toggleBeat: runBeat } = useBeat(room);
+  const { beat, toggleBeat: runBeat } = useBeat(room, podMusicUrl(team.id));
   const activity = usePodActivity(team.id, me);
 
   const audioRef = useRef<HTMLDivElement>(null);
@@ -176,6 +177,11 @@ export function PodView({
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const onLeaveRef = useRef(onLeave);
   onLeaveRef.current = onLeave;
+
+  // Warm the pod's background-music cache so the first click plays instantly.
+  useEffect(() => {
+    void fetch(podMusicUrl(team.id)).catch(() => {});
+  }, [team.id]);
 
   useEffect(() => {
     if (!room) return;
@@ -659,7 +665,7 @@ export function PodView({
                   </Button>
                   <Button variant="outline" onClick={onToggleBeat} disabled={!room}>
                     <Volume2Icon data-icon="inline-start" />
-                    {beat.on ? (beat.mine ? 'Stop audio' : `Stop (${beat.by})`) : 'Test audio'}
+                    {beat.on ? (beat.mine ? 'Stop music' : `Stop (${beat.by})`) : 'Background Music'}
                   </Button>
                   <Button
                     variant="outline"

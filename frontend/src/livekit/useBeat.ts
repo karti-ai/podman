@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomEvent, type Room } from 'livekit-client';
 import { DATA_TOPIC, type DataMessage } from '@podman/shared';
-import { startBeat, type BeatHandle } from '../lib/beat.js';
+import { startBeat, startMusic, type BeatHandle } from '../lib/beat.js';
 
 /** Name of the test-audio track; its presence in the room IS the shared state. */
 export const BEAT_TRACK = 'podman-beat';
@@ -23,7 +23,7 @@ const OFF: BeatState = { on: false, by: null, mine: false };
  * from the track's presence (self-syncing across joins/leaves). Any participant
  * can stop it: non-owners send BEAT_STOP and the owner unpublishes.
  */
-export function useBeat(room: Room | null) {
+export function useBeat(room: Room | null, musicUrl?: string) {
   const [beat, setBeat] = useState<BeatState>(OFF);
   const beatRef = useRef<BeatHandle | null>(null);
 
@@ -133,7 +133,7 @@ export function useBeat(room: Room | null) {
     try {
       await room.startAudio().catch(() => {}); // unlock playback from this gesture
       if (unmountedRef.current) return;
-      const handle = startBeat();
+      const handle = musicUrl ? await startMusic(musicUrl) : startBeat();
       beatRef.current = handle;
       await room.localParticipant.publishTrack(handle.track, { name: BEAT_TRACK });
       if (unmountedRef.current) await stopLocal(); // left mid-publish — clean up
@@ -144,7 +144,7 @@ export function useBeat(room: Room | null) {
     } finally {
       startingRef.current = false;
     }
-  }, [room, beat, stopLocal]);
+  }, [room, beat, stopLocal, musicUrl]);
 
   return { beat, toggleBeat };
 }

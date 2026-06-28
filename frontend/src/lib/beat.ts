@@ -75,3 +75,42 @@ export function startBeat(): BeatHandle {
     },
   };
 }
+
+/**
+ * Load an MP3 from `url` and loop it as an audio MediaStreamTrack to publish into
+ * a LiveKit room (and play on local speakers). Used for pod background music
+ * (Lyria-generated). Pure Web Audio — no asset bundling.
+ */
+export async function startMusic(url: string): Promise<BeatHandle> {
+  const ctx = new AudioContext();
+  await ctx.resume();
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`music fetch failed: ${res.status}`);
+  const buffer = await ctx.decodeAudioData(await res.arrayBuffer());
+
+  const dest = ctx.createMediaStreamDestination();
+  const master = ctx.createGain();
+  master.gain.value = 0.6;
+  master.connect(dest); // -> published track (remote listeners)
+  master.connect(ctx.destination); // -> local speakers (publisher)
+
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+  src.connect(master);
+  src.start();
+
+  const track = dest.stream.getAudioTracks()[0]!;
+  return {
+    track,
+    stop: () => {
+      try {
+        src.stop();
+      } catch {
+        /* already stopped */
+      }
+      track.stop();
+      void ctx.close();
+    },
+  };
+}
