@@ -2,8 +2,10 @@ import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { RoomEvent, Track } from 'livekit-client';
 import {
   ArrowLeftIcon,
+  BrainIcon,
   CheckIcon,
   CircleDotIcon,
+  EyeIcon,
   GitBranchIcon,
   ExternalLinkIcon,
   FileTextIcon,
@@ -12,13 +14,20 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
   RadioTowerIcon,
+  ShieldIcon,
   SparklesIcon,
   TriangleAlertIcon,
   Volume2Icon,
+  WorkflowIcon,
   XIcon,
 } from 'lucide-react';
 import type { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
-import type { Pod, PodActivityEvent, PodActivityKind } from '@podman/shared';
+import type {
+  Pod,
+  PodActivityEvent,
+  PodActivityKind,
+  PodActivitySource,
+} from '@podman/shared';
 import { startBeat, type BeatHandle } from '../lib/beat.js';
 import { useInterventions, primeSpeech } from '../livekit/useInterventions.js';
 import { usePodActivity } from '../hooks/use-pod-activity.js';
@@ -698,10 +707,38 @@ function ActivitySidebar({
       <SidebarContent className="px-3 py-3">
         <div className="group-data-[collapsible=icon]:hidden">
           {events.length ? (
-            <div className="flex max-h-[calc(100svh-9rem)] flex-col gap-3 overflow-y-auto pr-1">
-              {events.map((event) => (
-                <ActivityItem key={event.id} event={event} />
-              ))}
+            <div className="flex max-h-[calc(100svh-9rem)] flex-col gap-4 overflow-y-auto pr-1">
+              {ACTIVITY_CATEGORIES.map((category) => {
+                const items = events.filter(
+                  (event) => CATEGORY_OF[event.kind] === category.id,
+                );
+                if (!items.length) return null;
+                const CategoryIcon = category.icon;
+                return (
+                  <section key={category.id} className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 px-0.5">
+                      <CategoryIcon className="size-3.5 text-muted-foreground" />
+                      <h3 className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {category.label}
+                      </h3>
+                      <Badge
+                        variant="secondary"
+                        className="rounded-md px-1.5 py-0 text-[0.65rem]"
+                      >
+                        {items.length}
+                      </Badge>
+                    </div>
+                    <p className="-mt-1 px-0.5 text-[0.65rem] leading-4 text-muted-foreground/70">
+                      {category.hint}
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      {items.map((event) => (
+                        <ActivityItem key={event.id} event={event} />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           ) : (
             <Empty className="min-h-72 border-0 p-0">
@@ -791,6 +828,13 @@ function ActivityItem({ event }: { event: PodActivityEvent }) {
           </p>
         )}
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+          <SourceChip source={event.source} />
+          <Badge
+            variant="outline"
+            className="rounded-md px-1.5 py-0 text-[0.68rem] leading-4"
+          >
+            {KIND_LABEL[event.kind]}
+          </Badge>
           {metadata.map((item, index) => (
             <ActivityBadge
               key={`${item.variant}-${item.label}-${index}`}
@@ -829,7 +873,6 @@ function activityMetadata(event: PodActivityEvent): {
         ]
       : []),
     ...(event.file ? [{ label: event.file, variant: 'outline' as const }] : []),
-    { label: event.source, variant: 'outline' as const },
   ];
 }
 
@@ -849,6 +892,93 @@ function ActivityBadge({
       className="min-w-0 max-w-[9rem] rounded-md px-1.5 py-0 text-[0.68rem] leading-4"
     >
       <span className="truncate">{children}</span>
+    </Badge>
+  );
+}
+
+type ActivityCategoryId = 'signal' | 'decision';
+
+const CATEGORY_OF: Record<PodActivityKind, ActivityCategoryId> = {
+  observation: 'signal',
+  git: 'signal',
+  collision: 'decision',
+  intervention: 'decision',
+  outcome: 'decision',
+};
+
+const ACTIVITY_CATEGORIES: {
+  id: ActivityCategoryId;
+  label: string;
+  hint: string;
+  icon: typeof RadioTowerIcon;
+}[] = [
+  {
+    id: 'signal',
+    label: 'Signals',
+    hint: 'Raw inputs the agent observed — screen vision and git activity.',
+    icon: RadioTowerIcon,
+  },
+  {
+    id: 'decision',
+    label: 'Reasoning & decisions',
+    hint: 'What Hermes concluded and acted on — conflicts, interventions, outcomes.',
+    icon: WorkflowIcon,
+  },
+];
+
+const KIND_LABEL: Record<PodActivityKind, string> = {
+  observation: 'Observed',
+  git: 'Git',
+  collision: 'Conflict',
+  intervention: 'Intervention',
+  outcome: 'Outcome',
+};
+
+const SOURCE_META: Record<
+  PodActivitySource,
+  { label: string; icon: typeof RadioTowerIcon; className: string }
+> = {
+  vision: {
+    label: 'Vision',
+    icon: EyeIcon,
+    className: 'border-chart-1/40 bg-chart-1/10 text-chart-1',
+  },
+  git: {
+    label: 'Git',
+    icon: GitBranchIcon,
+    className: 'border-chart-2/40 bg-chart-2/10 text-chart-2',
+  },
+  memory: {
+    label: 'Memory',
+    icon: BrainIcon,
+    className: 'border-chart-4/40 bg-chart-4/10 text-chart-4',
+  },
+  hermes: {
+    label: 'Hermes',
+    icon: SparklesIcon,
+    className: 'border-primary/40 bg-primary/10 text-primary',
+  },
+  policy: {
+    label: 'Policy',
+    icon: ShieldIcon,
+    className: 'border-chart-3/40 bg-chart-3/10 text-chart-3',
+  },
+};
+
+function SourceChip({ source }: { source: PodActivitySource }) {
+  const meta = SOURCE_META[source];
+  const Icon = meta.icon;
+  return (
+    <Badge
+      variant="outline"
+      title={`Source: ${meta.label}`}
+      className={cn(
+        'gap-1 rounded-md border px-1.5 py-0 text-[0.68rem] font-medium leading-4',
+        meta.className,
+      )}
+    >
+      <Icon className="size-3" />
+      {meta.label}
     </Badge>
   );
 }
