@@ -26,12 +26,19 @@ intervention that fits:
   (`publishHermesIntervention` / `publishHermesMessage`). Default path.
 - **Urgent voice** — only for `critical` collisions. `speak()` generates Gemini
   TTS audio and publishes it as a LiveKit audio track.
+- **Research overlap nudge** — a collaboration card when one engineer is editing
+  a file while another is researching the same topic in docs/browser context.
+  This uses `suggestedAction.kind = "ping_teammate"` and is spoken once for the
+  demo beat, but it is explicitly **not** a merge conflict.
 
 Intervention text is short and deterministic (template, not an LLM call):
 `Conflict: alice + bob both on detector.ts (unpushed). Seen before.` The spoken
 line is phrased for natural TTS prosody. Each intervention is persisted to the
 `interventions` collection; the teammate's accept/dismiss returns via
 `POST /api/outcome`.
+
+Research-overlap text is also deterministic:
+`🤝 bob is researching LiveKit agents (docs.livekit.io) while alice edits livekit.py — sync up before duplicating effort.`
 
 A per-pod cooldown (`NUDGE_COOLDOWN_MS`, default 3 min) and a single-shot
 "active conflict" guard prevent repeat nagging; a conflict re-arms once it

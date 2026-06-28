@@ -33,13 +33,23 @@ screen-share track (not an HTTP upload — frames arrive over LiveKit).
 
 ```ts
 {
+  mode: 'editing' | 'research', // browser/docs/SDK research vs editor work
   currentFile: string,          // open file path, e.g. src/auth/session.ts
   currentSymbol: string,        // function/class under the cursor
   activity: string,             // editing | reading | debugging | terminal | PR review
   hasUnpushedChanges: boolean,  // dirty git gutter / modified markers visible
+  researchTopic: string,        // e.g. "LiveKit agents setup", for research mode
+  researchSource: string,       // source domain, e.g. "docs.livekit.io"
   confidence: number            // 0..1
 }
 ```
+
+When a frame shows a browser/docs/SDK page instead of an editor, Gemini Vision
+classifies it as `mode: "research"` and extracts the topic/source. That feeds the
+cross-channel overlap detector: one teammate researching LiveKit docs while
+another edits `livekit.py` becomes a collaboration nudge, not a merge-conflict
+alert. Editor/IDE frames remain `mode: "editing"` and use the existing file,
+symbol, activity, and dirty-change fields.
 
 **Latency/cost levers (in code):**
 

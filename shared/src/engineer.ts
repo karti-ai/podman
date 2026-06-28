@@ -12,6 +12,12 @@ export interface EngineerContext {
   currentSymbol?: string;
   /** Higher-level feature/action inferred from the screen. */
   activity?: string;
+  /** Broad screen mode: editor work or browser/docs research. */
+  mode?: 'editing' | 'research';
+  /** Topic being researched when mode is "research", e.g. "LiveKit agents". */
+  researchTopic?: string;
+  /** Research source domain, e.g. "docs.livekit.io". */
+  researchSource?: string;
   /** Whether the screen shows uncommitted/unpushed changes (gutter/diff). */
   hasUnpushedChanges?: boolean;
   /** 0–1 confidence in this read of the screen. */

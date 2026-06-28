@@ -41,4 +41,5 @@ __pycache__/
 # Ramis
 .remember/
 .claude/
+.hermes/
 .playwright-mcp/

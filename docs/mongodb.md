@@ -69,6 +69,10 @@ Key fields:
 - `symbol`
 - `engineers`
 - `severity`
+- `overlapKind` — optional; `file`/undefined for same-file collisions,
+  `research` for code-edit ↔ research overlaps.
+- `researchTopic`, `researchSource`, `researcher`, `editor` — optional fields
+  present only for research overlaps.
 - `memorySignature`
 - `githubState`
 - `detectedAt`

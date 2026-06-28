@@ -49,7 +49,7 @@ function memoryText(collision: Collision): string {
     .join('\n');
 }
 
-function cosine(a: number[], b: number[]): number {
+export function cosine(a: number[], b: number[]): number {
   const n = Math.min(a.length, b.length);
   let dot = 0;
   let aNorm = 0;
@@ -67,6 +67,12 @@ function cosine(a: number[], b: number[]): number {
 
 async function embed(text: string, inputType: 'document' | 'query'): Promise<number[] | null> {
   return (await embedWithVoyage(text, inputType)) ?? embedWithGemini(text, inputType);
+}
+
+export async function semanticSimilarity(a: string, b: string): Promise<number | null> {
+  const [va, vb] = await Promise.all([embed(a, 'query'), embed(b, 'document')]);
+  if (!va || !vb) return null;
+  return cosine(va, vb);
 }
 
 async function embedWithVoyage(

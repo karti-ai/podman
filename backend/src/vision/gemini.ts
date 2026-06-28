@@ -7,6 +7,11 @@ const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 const SCHEMA = {
   type: Type.OBJECT,
   properties: {
+    mode: {
+      type: Type.STRING,
+      description:
+        'editing when an IDE/editor/terminal is primary; research for browser docs/SDK pages',
+    },
     currentFile: {
       type: Type.STRING,
       description: 'open file path if visible, e.g. src/auth/session.ts',
@@ -20,13 +25,24 @@ const SCHEMA = {
       type: Type.BOOLEAN,
       description: 'dirty git gutter / modified markers visible',
     },
+    researchTopic: {
+      type: Type.STRING,
+      description: 'topic being researched when mode is research, e.g. LiveKit agents setup',
+    },
+    researchSource: {
+      type: Type.STRING,
+      description: 'source domain when mode is research, e.g. docs.livekit.io',
+    },
     confidence: { type: Type.NUMBER, description: '0..1 confidence in this read' },
   },
   propertyOrdering: [
+    'mode',
     'currentFile',
     'currentSymbol',
     'activity',
     'hasUnpushedChanges',
+    'researchTopic',
+    'researchSource',
     'confidence',
   ],
 } as const;
@@ -43,7 +59,10 @@ export async function analyzeFrame(
         role: 'user',
         parts: [
           {
-            text: "You are PodMan watching an engineer's screen. Identify what file/symbol they are working on and whether there are uncommitted edits. JSON only.",
+            text:
+              "You are PodMan watching an engineer's screen. Return JSON only. " +
+              "If the primary window is an IDE/editor/terminal, set mode='editing' and identify the file, symbol, activity, and whether uncommitted edits are visible. " +
+              "If the primary window is a browser/docs/SDK/reference page, set mode='research', leave currentFile empty unless a file path is clearly visible, and extract researchTopic plus researchSource as the source domain.",
           },
           { inlineData: { mimeType: 'image/jpeg', data: jpeg.toString('base64') } },
         ],
@@ -63,6 +82,9 @@ export async function analyzeFrame(
     currentFile: parsed.currentFile,
     currentSymbol: parsed.currentSymbol,
     activity: parsed.activity,
+    mode: parsed.mode,
+    researchTopic: parsed.researchTopic,
+    researchSource: parsed.researchSource,
     hasUnpushedChanges: parsed.hasUnpushedChanges,
     confidence: parsed.confidence ?? 0.5,
     observedAt: new Date().toISOString(),

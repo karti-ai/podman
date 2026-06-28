@@ -2,6 +2,7 @@ import { RoomEvent, type Room } from '@livekit/rtc-node';
 import type { EngineerContext, Collision, Intervention, DataMessage } from '@podman/shared';
 import { analyzeFrame } from '../vision/gemini.js';
 import { detectCollisions } from '../collision/detector.js';
+import { detectResearchOverlaps } from '../collision/research.js';
 import { getGithubState } from '../github/client.js';
 import {
   recordObservation,
@@ -97,7 +98,10 @@ export class PodMan {
     }
 
     const github = await getGithubState(); // cached
-    const collisions = detectCollisions([...this.contexts.values()], github, gitStates);
+    const contexts = [...this.contexts.values()];
+    const fileCollisions = detectCollisions(contexts, github, gitStates);
+    const researchCollisions = await detectResearchOverlaps(contexts, gitStates);
+    const collisions = [...fileCollisions, ...researchCollisions];
 
     // Re-arm: any conflict we previously voiced that is no longer present has
     // resolved, so allow it to alert again if it recurs.
@@ -109,7 +113,9 @@ export class PodMan {
     // Capture git ground-truth overlap now, while engineer_states are fresh, so
     // the outcome-time verifier never depends on a stale sidecar or a late click.
     for (const collision of collisions) {
-      collision.gitOverlap = engineersOverlapOnFile(collision, gitStates);
+      if (collision.overlapKind !== 'research') {
+        collision.gitOverlap = engineersOverlapOnFile(collision, gitStates);
+      }
     }
 
     for (const collision of collisions) await this.handle(collision);
@@ -122,7 +128,7 @@ export class PodMan {
    * basename.
    */
   private conflictKey(collision: Collision): string {
-    return comparableBasename(collision.file);
+    return `${collision.overlapKind ?? 'file'}:${comparableBasename(collision.file)}`;
   }
 
   private async handle(collision: Collision): Promise<void> {
@@ -143,8 +149,41 @@ export class PodMan {
     this.activeConflicts.add(key); // claim now we're alerting; re-armed in onScreenFrame on resolution
     await recordCollision(collision);
     const action = preferredAction(collision, prior);
-    const names = collision.engineers.join(' + ');
     const shortFile = collision.file.split('/').pop() ?? collision.file;
+    const isResearchOverlap = collision.overlapKind === 'research';
+
+    if (isResearchOverlap) {
+      const researcher = collision.researcher ?? collision.engineers[1] ?? 'A teammate';
+      const editor = collision.editor ?? collision.engineers[0] ?? 'a teammate';
+      const topic = collision.researchTopic ?? 'the same area';
+      const source = collision.researchSource ? ` (${collision.researchSource})` : '';
+      const message = `🤝 ${researcher} is researching ${topic}${source} while ${editor} edits ${shortFile} — sync up before duplicating effort.`;
+      const voiceLine = `${researcher} is researching ${topic} while ${editor} works on ${shortFile}. Worth a quick sync.`;
+      const intervention: Intervention = {
+        id: `int_${Date.now()}`,
+        collisionId: collision.id,
+        podId: this.podId,
+        kind: 'card',
+        message,
+        suggestedAction: {
+          kind: 'ping_teammate',
+          params: {
+            file: collision.file,
+            summary: message,
+            engineers: collision.engineers,
+            researchTopic: collision.researchTopic,
+            researchSource: collision.researchSource,
+          },
+        },
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+      await recordIntervention(intervention);
+      await publishHermesIntervention(this.room, collision, intervention, voiceLine);
+      return;
+    }
+
+    const names = collision.engineers.join(' + ');
 
     // Terse, demo-centered alert — short and direct, not chatty AI prose.
     const message =

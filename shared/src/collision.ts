@@ -14,6 +14,14 @@ export interface Collision {
   /** Engineer ids involved in the overlap. */
   engineers: string[];
   severity: CollisionSeverity;
+  /** Overlap type; undefined preserves historical same-file behavior. */
+  overlapKind?: 'file' | 'research';
+  /** Research topic/source for cross-channel code-edit ↔ research overlaps. */
+  researchTopic?: string;
+  researchSource?: string;
+  /** Engineer doing research and engineer editing the matched file. */
+  researcher?: string;
+  editor?: string;
   /** Snapshot of relevant GitHub state at detection time. */
   githubState?: GithubStateSnapshot;
   /**
