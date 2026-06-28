@@ -159,6 +159,37 @@ async function verifyMemoryRecall() {
   if (!recalled) fail('memory recall did not find seeded collision');
 }
 
+async function verifyGraph() {
+  process.env.LIVEKIT_URL = env.LIVEKIT_URL;
+  process.env.LIVEKIT_API_KEY = env.LIVEKIT_API_KEY;
+  process.env.LIVEKIT_API_SECRET = env.LIVEKIT_API_SECRET;
+  process.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
+  process.env.GITHUB_TOKEN = env.GITHUB_TOKEN;
+  process.env.GITHUB_REPO = env.GITHUB_REPO;
+  process.env.MONGODB_URI = env.MONGODB_URI;
+
+  const podId = `verify-graph-${Date.now()}`;
+  const { seedGraph } = await import('../backend/dist/graph/store.js');
+  await seedGraph(podId);
+
+  const graph = await json(await doFetch(`${baseUrl}/api/pods/${encodeURIComponent(podId)}/graph`));
+  if (!Array.isArray(graph.nodes) || graph.nodes.length < 1)
+    fail('graph endpoint returned no nodes');
+  if (!Array.isArray(graph.edges) || graph.edges.length < 1)
+    fail('graph endpoint returned no edges');
+
+  const reach = await json(
+    await doFetch(
+      `${baseUrl}/api/pods/${encodeURIComponent(podId)}/graph/reach/${encodeURIComponent(
+        'engineer:karti',
+      )}`,
+    ),
+  );
+  if (!Array.isArray(reach.reaches) || reach.reaches.length < 1) {
+    fail('graph reachability endpoint returned no reachable edges');
+  }
+}
+
 async function verifyGitWatcher() {
   const child = spawn(
     process.execPath,
@@ -206,6 +237,7 @@ try {
   await verifyApi();
   await verifyCollisionAndMessages();
   await verifyMemoryRecall();
+  await verifyGraph();
   await verifyGitWatcher();
   console.log(
     JSON.stringify(
@@ -213,7 +245,15 @@ try {
         ok: true,
         baseUrl,
         mongoUri,
-        checks: ['health', 'token', 'pod-crud', 'collision', 'memory-recall', 'git-watcher'],
+        checks: [
+          'health',
+          'token',
+          'pod-crud',
+          'collision',
+          'memory-recall',
+          'graph',
+          'git-watcher',
+        ],
       },
       null,
       2,

@@ -153,6 +153,12 @@ try {
   if (!hasPodCards) throw new Error('pod cards did not render');
   if (hasOverlay) throw new Error('Vite error overlay is visible');
 
+  await page.getByRole('button', { name: 'Team memory' }).click();
+  await page.getByText('Workflow metrics').waitFor({ timeout: 15_000 });
+  await page.getByText('Learning edges').waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: /Pods/i }).click();
+  await page.getByPlaceholder('Your name').first().waitFor({ timeout: 15_000 });
+
   await page.getByPlaceholder('Your name').first().fill(verifyMember);
   await page.getByRole('button', { name: 'Add and join' }).first().click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
@@ -191,6 +197,7 @@ try {
         ok: true,
         frontendUrl,
         bodyLength: bodyText.length,
+        graph: true,
         joined: true,
         intervention: true,
         member: verifyMember,
