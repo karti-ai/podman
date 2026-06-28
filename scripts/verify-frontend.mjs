@@ -138,6 +138,27 @@ if (shouldStartPreview) {
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+await page.addInitScript(() => {
+  Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      ...(globalThis.navigator.mediaDevices ?? {}),
+      async getDisplayMedia() {
+        const canvas = globalThis.document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 360;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('canvas context unavailable');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#111';
+        ctx.font = '28px sans-serif';
+        ctx.fillText('PodMan verification screen', 32, 72);
+        return canvas.captureStream(5);
+      },
+    },
+  });
+});
 
 const consoleErrors = [];
 const pageErrors = [];
@@ -193,6 +214,12 @@ try {
     throw new Error(`pod detail controls did not render after join: ${joinedText.slice(0, 500)}`);
   }
 
+  await page.getByRole('button', { name: 'Share screen' }).click();
+  await page.getByRole('button', { name: 'Stop sharing' }).waitFor({ timeout: 15_000 });
+  await page.getByText(/Screen\s*published/i).waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Stop sharing' }).click();
+  await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
+
   const publisher = await connectPublisher('frontend-pod');
   try {
     await waitForInterventionCard(page, publisher, 'frontend-pod');
@@ -216,6 +243,7 @@ try {
         bodyLength: bodyText.length,
         graph: true,
         joined: true,
+        screenShare: true,
         intervention: true,
         member: verifyMember,
       },
