@@ -8,6 +8,7 @@ import {
   recordObservation,
   recordCollision,
   recordIntervention,
+  recordSuppression,
   updateInterventionStatus,
 } from '../memory/store.js';
 import { getGitStates, type GitState } from '../memory/db.js';
@@ -144,7 +145,22 @@ export class PodMan {
     if (prior?.priorOutcome?.accepted && prior?.priorOutcome?.wasRealCollision) {
       collision.severity = 'critical';
     }
-    if (!shouldIntervene(collision, prior)) return; // Loop B: policy gate
+    if (!shouldIntervene(collision, prior)) {
+      // Feature A — make the negative-feedback loop VISIBLE. If we stayed quiet
+      // *specifically* because this signature was DISMISSED before, record a
+      // durable suppressed-repeat event (timestamped now, at the repeat) so the
+      // activity stream shows the learning instead of nothing.
+      if (prior?.priorOutcome && !prior.priorOutcome.accepted) {
+        void recordSuppression(
+          collision,
+          prior.priorOutcome.interventionId,
+          prior.priorOutcome.recordedAt,
+        ).catch((err) =>
+          console.error(`[memory] suppression record failed: ${(err as Error).message}`),
+        );
+      }
+      return; // Loop B: policy gate
+    }
 
     this.activeConflicts.add(key); // claim now we're alerting; re-armed in onScreenFrame on resolution
     await recordCollision(collision);

@@ -31,12 +31,29 @@ export async function closeMemory(): Promise<void> {
   await client.close();
 }
 
+/** A durable record that PodMan stayed quiet on a recurring collision because
+ *  its signature was previously dismissed — the negative-feedback loop made
+ *  auditable. Timestamped at the repeat; materialized as `suppressed` activity
+ *  in graph/live.ts. The suppressed collision is never written to `collisions`
+ *  (the agent returns before recordCollision), so this is its own record. */
+export interface SuppressionDoc {
+  id: string;
+  podId: string;
+  collisionId: string;
+  file: string;
+  engineers: string[];
+  priorInterventionId?: string;
+  priorDismissedAt?: string;
+  suppressedAt: string;
+}
+
 export interface PodCollections {
   pods: Collection<Pod>;
   observations: Collection<EngineerContext>;
   collisions: Collection<Collision>;
   interventions: Collection<Intervention>;
   outcomes: Collection<InterventionOutcome>;
+  suppressions: Collection<SuppressionDoc>;
 }
 
 export async function collections(): Promise<PodCollections> {
@@ -47,6 +64,7 @@ export async function collections(): Promise<PodCollections> {
     collisions: db.collection<Collision>('collisions'),
     interventions: db.collection<Intervention>('interventions'),
     outcomes: db.collection<InterventionOutcome>('outcomes'),
+    suppressions: db.collection<SuppressionDoc>('suppressions'),
   };
 }
 
@@ -114,6 +132,7 @@ export async function initMemory(): Promise<void> {
     ['collisions.file', () => c.collisions.createIndex({ podId: 1, file: 1, detectedAt: -1 })],
     ['interventions.collisionId', () => c.interventions.createIndex({ collisionId: 1 })],
     ['outcomes.interventionId', () => c.outcomes.createIndex({ interventionId: 1 })],
+    ['suppressions.podId', () => c.suppressions.createIndex({ podId: 1, suppressedAt: -1 })],
     ['hermes_jobs.id', () => db.collection('hermes_jobs').createIndex({ id: 1 }, { unique: true })],
     [
       'hermes_jobs.session',

@@ -50,6 +50,31 @@ export async function recordIntervention(intervention: Intervention): Promise<vo
   );
 }
 
+/**
+ * Feature A — record that PodMan stayed quiet on a recurring collision because
+ * its signature was previously dismissed. Timestamped at the repeat (now), so
+ * the negative-feedback beat surfaces as recent `suppressed` activity rather
+ * than being re-synthesized from the old dismissal row.
+ */
+export async function recordSuppression(
+  collision: Collision,
+  priorInterventionId?: string,
+  priorDismissedAt?: string,
+): Promise<void> {
+  await persist('suppression', async () =>
+    (await collections()).suppressions.insertOne({
+      id: `supp_${Date.now()}`,
+      podId: collision.podId,
+      collisionId: collision.id,
+      file: collision.file,
+      engineers: collision.engineers,
+      priorInterventionId,
+      priorDismissedAt,
+      suppressedAt: new Date().toISOString(),
+    }),
+  );
+}
+
 export async function hasRecentInterventionForCollision(
   collision: Collision,
   windowMs = Number(process.env.NUDGE_COOLDOWN_MS ?? '180000'),

@@ -98,6 +98,7 @@ Additive routes in `backend/src/server.ts` (shared file — additive only).
 | `collisions`      | **collision** nodes; `collides` (eng→col) + `touches` (file→col)           |
 | `interventions`   | **intervention** nodes; `warns` (col→intervention)                         |
 | `outcomes`        | `learned_from` (intervention→owner) on accepted; flips nodes to `learned`  |
+| `suppressions`    | `suppressed` activity beats — a dismissed signature recurred and PodMan stayed quiet (negative-feedback made visible; written at repeat time by the agent) |
 
 Metrics (learned owners / open risk paths / accept rate) are live counts.
 

@@ -457,6 +457,31 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
     );
   }
 
+  // 7. Suppressed repeats: PodMan stayed quiet on a recurring collision because
+  // the signature was dismissed before — the negative-feedback loop made visible
+  // (Feature A). Stamped at repeat time, so it sorts as recent activity.
+  const suppressionDocs = await c.suppressions
+    .find({ podId })
+    .sort({ suppressedAt: -1 })
+    .limit(20)
+    .toArray();
+  for (const s of suppressionDocs) {
+    const sFile = normalizeFile(s.file);
+    if (!isFilePath(sFile)) continue;
+    const sEngs = (s.engineers ?? []).join(' + ') || 'teammates';
+    pushActivity(
+      activity,
+      {
+        id: `suppressed:${s.id}`,
+        at: s.suppressedAt,
+        kind: 'suppressed',
+        title: `Suppressed — ${shortLabel(sFile)} repeat silenced`,
+        detail: `${sEngs} on ${sFile} recurred, but it was dismissed before — PodMan stayed quiet.`,
+      },
+      activityIds,
+    );
+  }
+
   // Prune test-artifact engineers, then anything left orphaned by that.
   const dropNode = (id: string) => {
     b.nodes.delete(id);
