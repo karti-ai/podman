@@ -47,7 +47,9 @@ export default function App() {
 
   // Connect to a pod's LiveKit room and persist the session for refresh-resume.
   async function connectToPod(podId: string, who: string) {
-    const identity = `${who}-${Math.random().toString(36).slice(2, 7)}`;
+    // Stable identity per member so a refresh/rejoin replaces the existing
+    // session instead of leaving a ghost participant behind.
+    const identity = who;
     const result = await joinPod(podId, identity, who);
     setRoom(result.room);
     setDevMode(result.mode === 'dev');

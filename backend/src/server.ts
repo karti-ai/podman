@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomConfiguration } from 'livekit-server-sdk';
 import { env } from './env.js';
 import { createSyncPr } from './github/client.js';
 import { recordOutcome, memoryStats } from './memory/store.js';
@@ -36,6 +36,9 @@ app.post('/api/token', async (req, res) => {
     metadata: JSON.stringify({ githubLogin: githubLogin ?? name }),
   });
   at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true });
+  // Auto-clean the room: close 60s after it empties, drop a participant 20s
+  // after they disconnect. Applied when LiveKit auto-creates the room.
+  at.roomConfig = new RoomConfiguration({ name: room, emptyTimeout: 60, departureTimeout: 20 });
   res.json({ token: await at.toJwt(), url: env.LIVEKIT_URL });
 });
 
