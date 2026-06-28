@@ -9,6 +9,8 @@ import {
   GitBranchIcon,
   ExternalLinkIcon,
   MessageSquareIcon,
+  MicIcon,
+  MicOffIcon,
   MonitorUpIcon,
   PanelLeftIcon,
   PanelRightIcon,
@@ -17,6 +19,7 @@ import {
   SparklesIcon,
   TriangleAlertIcon,
   Volume2Icon,
+  VolumeXIcon,
   WorkflowIcon,
   XIcon,
 } from 'lucide-react';
@@ -113,6 +116,7 @@ export function PodView({
   const [testingVoice, setTestingVoice] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [micOn, setMicOn] = useState(false);
   const [leftStreamOpen, setLeftStreamOpen] = useState(() =>
     readStoredBool('podman.myStreamOpen', true),
   );
@@ -168,6 +172,7 @@ export function PodView({
     // are actually heard.
     const onPlaybackChanged = () => setAudioBlocked(!room.canPlaybackAudio);
     onPlaybackChanged();
+    setMicOn(room.localParticipant.isMicrophoneEnabled);
 
     room
       .on(RoomEvent.ParticipantConnected, refresh)
@@ -201,6 +206,20 @@ export function PodView({
       setAudioBlocked(!room.canPlaybackAudio);
     } catch (e) {
       setNote(`Could not enable sound: ${(e as Error).message}`);
+    }
+  }
+
+  // Publish/unpublish the local mic. Enabling triggers the browser permission
+  // prompt, so the button doubles as a "is my mic set up right?" check.
+  async function toggleMic() {
+    if (!room) return;
+    setNote(null);
+    try {
+      const next = !micOn;
+      await room.localParticipant.setMicrophoneEnabled(next);
+      setMicOn(next);
+    } catch (e) {
+      setNote(`Could not toggle mic: ${(e as Error).message}`);
     }
   }
 
@@ -356,7 +375,31 @@ export function PodView({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+                  <Button
+                    variant={audioBlocked ? 'default' : 'outline'}
+                    onClick={() => void enableSound()}
+                    disabled={!room}
+                  >
+                    {audioBlocked ? (
+                      <VolumeXIcon data-icon="inline-start" />
+                    ) : (
+                      <Volume2Icon data-icon="inline-start" />
+                    )}
+                    {audioBlocked ? 'Enable audio' : 'Audio on'}
+                  </Button>
+                  <Button
+                    variant={micOn ? 'default' : 'outline'}
+                    onClick={() => void toggleMic()}
+                    disabled={!room}
+                  >
+                    {micOn ? (
+                      <MicIcon data-icon="inline-start" />
+                    ) : (
+                      <MicOffIcon data-icon="inline-start" />
+                    )}
+                    {micOn ? 'Mic on' : 'Enable mic'}
+                  </Button>
                   <Button variant="outline" onClick={onToggleBeat} disabled={!room}>
                     <Volume2Icon data-icon="inline-start" />
                     {beat.on ? (beat.mine ? 'Stop audio' : `Stop (${beat.by})`) : 'Test audio'}
@@ -396,21 +439,6 @@ export function PodView({
                 <CircleDotIcon />
                 <AlertTitle>Room notice</AlertTitle>
                 <AlertDescription>{note}</AlertDescription>
-              </Alert>
-            )}
-
-            {room && audioBlocked && (
-              <Alert className="flex items-center justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <Volume2Icon />
-                  <div>
-                    <AlertTitle>Sound is off</AlertTitle>
-                    <AlertDescription>Click to hear PodMan&apos;s voice alerts.</AlertDescription>
-                  </div>
-                </div>
-                <Button size="sm" onClick={() => void enableSound()}>
-                  Enable sound
-                </Button>
               </Alert>
             )}
 
