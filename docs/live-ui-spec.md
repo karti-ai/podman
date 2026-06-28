@@ -14,7 +14,7 @@ The visible self-improving loop, before → after:
 - **Before:** Two engineers edit `auth.ts`, one unpushed. A `collisions` doc is written, an `interventions` doc (status `pending`). The graph grows a red `collision` triangle and a `warns` edge to the intervention diamond. Copy: _"new — first time PodMan saw this path."_
 - **After:** The human clicks Accept → `POST /api/outcome` writes `{accepted:true, wasRealCollision:true}`. The materializer turns that outcome into a **`learned_from` edge** (`intervention → engineer`, label `learned: owns auth.ts`), flips the engineer node to `status:'learned'`, and bumps the **Learned owners** metric. Copy on the next similar collision: _"I've seen this before — last time the team accepted sync PR"_ (driven by `collisions.memorySignature` recall, already live).
 
-**Why this is not a dashboard** (hard constraint): it stays the **secondary, toggle-opened** view behind the pods list (`graph.md`), keeps the dark-Bauhaus single-canvas SVG (one graph, not a grid of charts), and every visible element is anchored to a live write + an action loop. The metrics rail is 3 numbers derived from real counts, not a wall of KPIs. The hero remains the intervention card in `PodView`; this view exists only to make _"PodMan got better"_ legible in 10 seconds.
+**Why this is not a dashboard** (hard constraint): it stays the **secondary, toggle-opened** view behind the pods list (`graph.md`), keeps a single-canvas SVG themed to match the app's shadcn UI (one graph, not a grid of charts), and every visible element is anchored to a live write + an action loop. The metrics rail is 3 numbers derived from real counts, not a wall of KPIs. The hero remains the intervention card in `PodView`; this view exists only to make _"PodMan got better"_ legible in 10 seconds.
 
 ## R1 — Revisions (resolves PR #3 review)
 
@@ -27,6 +27,10 @@ Revised after review. The five findings and resolutions (the sections below refl
 - **P3 — PLAN-before-code inconsistency → softened.** This PR is **spec-only**; the `docs/PLAN.md` task entry + `docs/graph.md` cross-link land **with the first implementation PR** (PLAN.md is hot/concurrent; the task ships alongside its code).
 
 **Contract changes (small, additive):** `shared/src/messages.ts` (`InterventionOutcome` +`learnedOwner`/`file`; `TeamModel.ownership` now written), `shared/src/graph.ts` (`PodGraph.source`), `frontend/src/livekit/useInterventions.ts` (Accept sends owner+file).
+
+## R2 — Theme (matches the app)
+
+The app shipped as **light shadcn**; the shipped `GraphView` was **hardcoded dark-Bauhaus** and clashed. Resolution: re-theme `GraphView.tsx` to shadcn tokens (`var(--card)` / `--foreground` / `--muted-foreground` / `--border`, `--chart-1..5` for node hues) so it is **theme-aware** — light like the rest of the app today, dark if the app toggles — and reads as native. The functional encoding (geometric node shapes, per-kind colors, the 3-number metrics rail) is unchanged. This re-theme ships as its own small change to the live component (`feat/team-memory-theme`), independent of the live-data work.
 
 ## 1. Live data → graph mapping
 
@@ -105,9 +109,9 @@ The relay already fans out any JSON. **`GRAPH_DIRTY` needs no bridge** — it is
 
 The "Team memory" button currently passes `pods[0]?.id ?? 'demo-pod'` (line 271) — wrong pod for a multi-pod demo. Change to open the graph for the **pod in context**: add a `BrainCircuitIcon` action on each `PodCard` (`onOpenGraph(pod.id)`) wired to `setGraphPodId(pod.id)`, and keep the header button as a fallback that opens the **selected/first live pod** (the one with presence). The router slot (`if (graphPodId) return <GraphView podId={graphPodId} …/>`, line 237-239) is unchanged.
 
-### 4b. `GraphView.tsx` — keep dark-Bauhaus, add realtime
+### 4b. `GraphView.tsx` — match the app's shadcn theme, add realtime
 
-**Stays dark-Bauhaus** (per `graph.md` it is the deliberately distinct "it learned" surface — do not convert the SVG/`.pm-*` palette to shadcn). What changes:
+**Themed to match the command-center (R2).** The hardcoded dark `.pm-*` palette is replaced with shadcn tokens (`var(--card)` / `--foreground` / `--muted-foreground` / `--border`, and `--chart-1..5` for node hues) so Team Memory is **theme-aware** (renders light like the rest of the app today, follows dark mode if the app toggles) and reads as native, not a dark island. The functional encoding stays: geometric node shapes (engineer square / file square-outline / feature circle / collision triangle / intervention diamond) and per-kind colors. What changes:
 
 - **Realtime refresh:** open a ws to `/api/events` on mount; on `{type:'GRAPH_DIRTY', podId}` (matching this pod) or `COLLISION`/`VOICE_CUE`, re-call `fetchPodGraph(podId)` (and `fetchGraphMetrics`). Also a **5s poll** of `fetchPodGraph` as the floor (mirrors `App.tsx`'s existing 5s presence/memory poll) so it's live even if ws drops. New incoming nodes/edges fade in (CSS opacity transition on `<line>`/shape); `learned_from` edges animate the dashed stroke.
 - **"new" vs "seen before" copy** in the detail rail from `collision` node `summary` badge (§1).
@@ -182,7 +186,7 @@ The "Team memory" button currently passes `pods[0]?.id ?? 'demo-pod'` (line 271)
 - `shared/src/messages.ts` — `InterventionOutcome` +`learnedOwner?`/`file?`; `TeamModel.ownership` now written (R1). _(Task: supervised signal)_
 - `shared/src/graph.ts` — `PodGraph` +`source: 'live' | 'demo'` (R1). _(Task: live/demo honesty)_
 - `frontend/src/livekit/useInterventions.ts` — Accept `postOutcome` sends `learnedOwner` + `file` (R1). _(Task: supervised signal)_
-- `frontend/src/components/GraphView.tsx` — ws subscription + 5s poll + animations + "new/seen-before" rail copy + speaking pulse; keep dark-Bauhaus. _(Task: client)_
+- `frontend/src/components/GraphView.tsx` — re-theme to shadcn tokens (theme-aware, R2); ws subscription + 5s poll + animations + "new/seen-before" rail copy + speaking pulse. _(Task: client)_
 - `frontend/src/App.tsx` — per-pod graph entry; header button opens live/selected pod not `pods[0]`. _(Task: entry point)_
 - `frontend/src/components/PodCard.tsx` — `onOpenGraph(pod.id)` action. _(Task: entry point)_
 
