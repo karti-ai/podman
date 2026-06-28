@@ -5,7 +5,7 @@
  *
  * Served embedded in the `team_model` document; mirrored into `graph_nodes` /
  * `graph_edges` collections so the model can be walked with MongoDB
- * `$graphLookup`. See docs/graph.md.
+ * `$graphLookup`. See docs/cont_learning.md.
  */
 
 export type PodGraphNodeKind = 'engineer' | 'feature' | 'file' | 'collision' | 'intervention';

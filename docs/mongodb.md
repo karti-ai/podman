@@ -3,17 +3,14 @@
 Status: demo-backed / active
 
 MongoDB Atlas is PodMan's shared memory. It stores live work observations,
-collision predictions, interventions, outcomes, latest engineer state, the
-materialized Team memory graph, and optional future recall records.
+collision predictions (with vector embeddings for recall), interventions,
+outcomes, latest engineer state, the materialized Team memory graph, and async
+Hermes job runs.
 
 See also:
 
-- [`docs/continual-learning/`](continual-learning/) for outcome-backed team
-  memory.
-- [`docs/graph-discovery/`](graph-discovery/) for graph materialization and
-  `$graphLookup` traversal.
-- [`docs/agent-learning/`](agent-learning/) for planned strategy-version
-  records.
+- [`docs/cont_learning.md`](cont_learning.md) for outcome-backed team memory,
+  graph materialization, and `$graphLookup` traversal.
 
 ---
 
@@ -62,7 +59,7 @@ graph.
 
 ### `collisions`
 
-Predicted coordination risks.
+Predicted coordination risks, with memory enrichment for recall.
 
 Key fields:
 
@@ -75,8 +72,16 @@ Key fields:
 - `memorySignature`
 - `githubState`
 - `detectedAt`
+- `memoryText` — short text embedded for recall
+- `embedding` — vector (Voyage `voyage-4-lite` or Gemini `gemini-embedding-001`)
+- `embeddingProvider` — `voyage` | `gemini`
 
-Primary use: collision cards, exact signature recall, and graph risk paths.
+Vector index `collision_embedding` (Atlas Vector Search) powers `$vectorSearch`
+recall in `backend/src/memory/vectors.ts`. When Atlas vector search is
+unavailable, recall falls back to app-side cosine, then exact signature/file
+matching.
+
+Primary use: collision cards, vector + signature recall, and graph risk paths.
 
 ### `interventions`
 
@@ -138,16 +143,21 @@ Indexes:
 
 Primary use: `GET /api/pods/:podId/graph/reach/:id` with `$graphLookup`.
 
-### Optional Future Collections
+### `hermes_jobs` and `hermes_job_events`
 
-These are documented for planned work and should not be treated as active write
-paths unless implementation is added:
+Async Hermes task runs delegated from the live conversation agent (see
+`docs/hermes.md`).
 
-- `memory_vectors`
-- `agent_runs`
-- `agent_trace_events`
-- `strategy_versions`
-- `learning_proposals`
+- `hermes_jobs` — one doc per job (`id` unique; `{ sessionId, status, updatedAt }`
+  index). Fields: `id`, `podId`, `sessionId`, `prompt`, `contextScope`,
+  `riskLevel`, `successCriteria`, `status`, `finalSummary`, timestamps.
+- `hermes_job_events` — append-only step log (`{ jobId, createdAt }` index):
+  `accepted`, `heartbeat`, `step_started`, `step_output`, `needs_confirmation`,
+  `step_completed`, `completed`, `aborted`, `failed`. Output is redacted +
+  truncated before storage and mirrored to the room over LiveKit.
+
+Primary use: durable, replayable record of what Hermes did, streamed live to the
+conversation UI.
 
 ---
 

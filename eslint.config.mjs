@@ -9,7 +9,6 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/.venv/**',
       '**/*.config.*',
-      'examples/livekit-gemini-hacker-starter/**',
     ],
   },
   js.configs.recommended,

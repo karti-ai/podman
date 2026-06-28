@@ -1,138 +1,118 @@
 # Gemini Integration Spec
 
-PodMan uses Gemini for two distinct jobs: **vision** (understanding screens) and **voice** (urgent voice cues).
+Status: active / matches code.
+
+PodMan uses Gemini for five jobs, all through the `@google/genai` SDK
+(`GoogleGenAI`) with a single `GEMINI_API_KEY` (`GOOGLE_API_KEY` /
+`GOOGLE_GENERATIVE_AI_API_KEY` also accepted):
+
+1. **Vision** — turn screen frames into structured work context.
+2. **Embeddings** — vector recall over past coordination events.
+3. **TTS voice** — spoken urgent escalations over LiveKit.
+4. **Live conversation** — a real-time voice agent teammates talk to.
+5. **GenMedia (Lyria)** — a per-pod background score.
+
+Collision detection and intervention text are **deterministic in code**, not
+Gemini calls. PodMan does not ask Gemini "is this a conflict?" — that is decided
+by `backend/src/collision/detector.ts` from fused vision + git truth. This is a
+deliberate reliability choice for the live demo.
 
 ---
 
-## 1. Vision — Screen Understanding
+## 1. Vision — screen understanding
 
-**Model:** `gemini-2.0-flash` (fast, cheap, strong multimodal)
+**Model:** `GEMINI_VISION_MODEL` (default `gemini-2.0-flash`)
+**Code:** `backend/src/vision/gemini.ts` → `analyzeFrame()`
 
-**Trigger:** every 30s per active engineer, when Hermes receives a `POST /ingest` frame
+**Trigger:** the LiveKit agent samples a JPEG frame from each engineer's
+screen-share track (not an HTTP upload — frames arrive over LiveKit).
 
-**Input:** base64-encoded JPEG, max 1280×720, ~50–80KB after compression
+**Input:** a single base64 JPEG, sampled at low media resolution.
 
-**Prompt:**
+**Output:** structured JSON via `responseJsonSchema` (no markdown parsing):
 
-```
-You are analyzing a software engineer's screen during a coding session.
-Extract the following JSON. If you cannot determine a field with confidence above 0.7, set it to null.
-
+```ts
 {
-  "currentFile": "string | null",         // active file visible in editor tab or title bar
-  "inferredTask": "string | null",        // 1 sentence: what the engineer appears to be doing
-  "terminalVisible": true | false,        // is a terminal or CLI panel visible
-  "recentTerminalOutput": "string | null", // last meaningful line of terminal output if visible
-  "confidence": 0.0–1.0                  // your overall confidence in this extraction
+  currentFile: string,          // open file path, e.g. src/auth/session.ts
+  currentSymbol: string,        // function/class under the cursor
+  activity: string,             // editing | reading | debugging | terminal | PR review
+  hasUnpushedChanges: boolean,  // dirty git gutter / modified markers visible
+  confidence: number            // 0..1
 }
-
-Respond with valid JSON only. No explanation. No markdown.
 ```
 
-**Confidence gate:** if `confidence < 0.6`, Hermes discards the frame — no state update, no event detection triggered.
+**Latency/cost levers (in code):**
 
-**Rate limit:** 1 call per engineer per 30s. With 3 engineers = 6 calls/min ≈ $0.002/min at Flash pricing.
+- `thinkingConfig: { thinkingBudget: 0 }` — minimal thinking for the ambient loop.
+- `mediaResolution: MEDIA_RESOLUTION_LOW` — smaller image tokens.
+- Missing `confidence` defaults to `0.5`.
 
-**Demo setup requirement:** editors must have large font (18pt+), single window, file name clearly visible in tab. This is the primary reliability lever.
+**Demo reliability:** large editor font, single window, visible file tab. This is
+the primary lever for clean reads.
 
 ---
 
-## 2. Event Detection — Coordination Awareness
+## 2. Embeddings — semantic recall
 
-**Model:** `gemini-2.0-flash` (text only, fast)
+**Model:** `GEMINI_EMBEDDING_MODEL` (default `gemini-embedding-001`, 768 dims)
+**Code:** `backend/src/memory/vectors.ts`
 
-**Trigger:** after every successful state write to MongoDB, Hermes runs event detection over all active engineer contexts.
+Each collision is embedded into a short memory text (`file`, `symbol`,
+`engineers`, `severity`, unpushed flag) and stored on the `collisions` document.
+On a new collision PodMan embeds the query and runs MongoDB Atlas `$vectorSearch`
+(index `collision_embedding`) to recall similar past events and their outcomes.
 
-**Input:** JSON snapshot of all engineers' current states + ownership map
-
-**Prompt:**
-
-```
-You are a team coordination agent. Below is the current state of each engineer on the team.
-
-Engineer states:
-{{engineerStates}}
-
-Ownership map (who owns which files):
-{{ownershipMap}}
-
-Detect if any of these coordination events are occurring:
-- DEPENDENCY_READY: an engineer who was blocked or waiting now has what they need because another engineer completed relevant work
-- BLOCKER_DETECTED: an engineer appears stuck (same file, error in terminal, no progress) and another teammate could help
-- DUPLICATE_WORK: two or more engineers are working on the same file simultaneously
-
-If an event is detected, respond with:
-{
-  "event": "DEPENDENCY_READY" | "BLOCKER_DETECTED" | "DUPLICATE_WORK" | null,
-  "involvedEngineers": ["engineerId", ...],
-  "file": "string | null",
-  "reason": "1 sentence explanation"
-}
-
-If no event, respond with { "event": null }.
-Respond with valid JSON only.
-```
+**Provider order:** Voyage (`VOYAGE_API_KEY`, `voyage-4-lite`) is tried first when
+present; Gemini embeddings are the fallback. Without either, recall degrades to
+exact signature/file matching — the demo still works.
 
 ---
 
-## 3. Intervention Text Generation
+## 3. TTS voice — urgent escalation over LiveKit
 
-**Model:** `gemini-2.0-flash` (text only)
+**Model:** `GEMINI_LIVE_MODEL` (default `gemini-3.1-flash-tts-preview`)
+**Default voice:** `GEMINI_TTS_VOICE` (default `Charon`)
+**Code:** `backend/src/voice/live.ts` → `speak()` / `speakInRoom()`
 
-**Trigger:** when event detection returns a non-null event
-
-**Input:** event type + engineer names + file + reason
-
-**Prompt:**
-
-```
-You are PodMan, a friendly AI teammate. Generate a short spoken message (1–2 sentences max) to notify the team about this coordination event.
-
-Event: {{eventType}}
-Engineers involved: {{engineerNames}}
-File: {{file}}
-Context: {{reason}}
-
-Rules:
-- Use first names only
-- Be direct and specific
-- Do not use filler words
-- Sound natural when spoken aloud
-- Do not start with "Hey" or "Attention"
-
-Respond with the message text only.
-```
-
-**Example output:**
-
-> "Carol — Alice just got the auth endpoint running. You're clear to integrate."
+Flow: a short, natural voice line is generated for a critical collision, returned
+as audio, and published as a LiveKit microphone-source audio track. The track is
+held for the audio duration plus tail/hold so browsers do not cut playout short.
+Browser audio must be unlocked by a user gesture first. The frontend always
+renders the `VOICE_CUE` text as a fallback. See `docs/livekit.md` for delivery.
 
 ---
 
-## 4. Voice Output — Gemini TTS via LiveKit
+## 4. Live conversation — real-time voice agent
 
-**Model:** `gemini-3.1-flash-tts-preview`
-**Default voice:** `Charon`
+**Model:** `GEMINI_CONVERSATION_MODEL` (default `gemini-3.1-flash-live-preview`)
+**Code:** `agents/podman-live-conversation/agent.py` (Python LiveKit Agents,
+`google.realtime.RealtimeModel`)
 
-**Integration:** Hermes asks Gemini TTS for short PCM audio, then publishes that audio into the room as a short LiveKit audio track. The code still preserves a Gemini Live path for future available Live models.
+A teammate can start a live, streaming speech-to-speech session with PodMan. The
+agent answers using **function tools** rather than guessing, including:
 
-**Flow:**
+- `get_active_pod_context`, `get_recent_changes`, `search_team_memory`
+- `search_repo`, `repo_recent_commits`, `repo_find_commits` (repo + git history)
+- `record_conversation_note`
+- `delegate_to_hermes`, `abort_active_hermes_job` (hands work to the async Hermes
+  job runner — see `docs/hermes.md`)
 
-1. Intervention message text generated (step 3)
-2. Hermes wraps it in a natural-speaking prompt for Gemini TTS
-3. Gemini returns audio with the configured prebuilt voice
-4. Hermes publishes the audio into the LiveKit room
-5. The frontend still renders the `VOICE_CUE` text, but browser TTS is off unless explicitly enabled
+Started/stopped via `POST /api/pods/:id/live-conversation/start` and `.../stop`.
 
-**Why Gemini TTS first:**
+---
 
-- Natural voice quality is better than browser `speechSynthesis`
-- Tone and pacing can be steered directly in the prompt
-- The voice name is configurable with `GEMINI_TTS_VOICE`
-- LiveKit remains the delivery layer, so teammates hear the same room audio
+## 5. GenMedia — Lyria background score
+
+**Model:** `lyria-3-clip-preview` (override with `GEMINI_MUSIC_MODEL`)
+**Endpoint:** Gemini **Interactions API** (`/v1beta/interactions`)
+**Code:** `backend/src/voice/music.ts`
+
+A pod-specific ~30s clip is generated through the Interactions API, cached in
+MongoDB, and served via `GET /api/pods/:id/music` to play as ambient room audio.
 
 ---
 
 ## Cooldown
 
-Per-pod cooldown of **3 minutes** between urgent voice cues. Prevents spam if multiple risks fire simultaneously. Implemented in Hermes, not in Gemini.
+Per-pod cooldown (`NUDGE_COOLDOWN_MS`, default 180000 ms / 3 min) gates repeated
+interventions. Implemented in `backend/src/memory/policy.ts`, not in Gemini.
