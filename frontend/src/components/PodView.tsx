@@ -8,7 +8,6 @@ import {
   EyeIcon,
   GitBranchIcon,
   ExternalLinkIcon,
-  FileTextIcon,
   MessageSquareIcon,
   MonitorUpIcon,
   PanelLeftIcon,
@@ -773,6 +772,7 @@ function StreamStat({ label, value }: { label: string; value: number }) {
 function ActivityItem({ event }: { event: PodActivityEvent }) {
   const Icon = activityIcon(event.kind);
   const metadata = activityMetadata(event);
+  const title = activityTitle(event);
   return (
     <div
       className={cn(
@@ -792,9 +792,7 @@ function ActivityItem({ event }: { event: PodActivityEvent }) {
       </div>
       <div className="min-w-0">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-          <p className="line-clamp-2 min-w-0 break-words text-sm font-medium leading-5">
-            {event.title}
-          </p>
+          <p className="line-clamp-2 min-w-0 break-words text-sm font-medium leading-5">{title}</p>
           <time className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
             {timeLabel(event.at)}
           </time>
@@ -889,7 +887,7 @@ const ACTIVITY_CATEGORIES: {
   {
     id: 'signal',
     label: 'Signals',
-    hint: 'Raw inputs the agent observed — screen vision and git activity.',
+    hint: 'Screen logs and local git activity routed to this stream.',
     icon: RadioTowerIcon,
   },
   {
@@ -901,7 +899,7 @@ const ACTIVITY_CATEGORIES: {
 ];
 
 const KIND_LABEL: Record<PodActivityKind, string> = {
-  observation: 'Observed',
+  observation: 'Screen log',
   git: 'Git',
   collision: 'Conflict',
   intervention: 'Intervention',
@@ -913,7 +911,7 @@ const SOURCE_META: Record<
   { label: string; icon: typeof RadioTowerIcon; className: string }
 > = {
   vision: {
-    label: 'Vision',
+    label: 'Screen',
     icon: EyeIcon,
     className: 'border-chart-1/40 bg-chart-1/10 text-chart-1',
   },
@@ -957,6 +955,11 @@ function SourceChip({ source }: { source: PodActivitySource }) {
   );
 }
 
+function activityTitle(event: PodActivityEvent): string {
+  if (event.kind !== 'observation') return event.title;
+  return event.title.startsWith('Screen') ? event.title : `Screen log: ${event.title}`;
+}
+
 function activityIcon(kind: PodActivityKind) {
   switch (kind) {
     case 'git':
@@ -969,7 +972,7 @@ function activityIcon(kind: PodActivityKind) {
       return CheckIcon;
     case 'observation':
     default:
-      return FileTextIcon;
+      return MonitorUpIcon;
   }
 }
 
