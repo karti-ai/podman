@@ -1,16 +1,81 @@
-# PodMan — 4-Minute Demo Script
+# PodMan — Demo Scripts
 
-**Theme:** Continual Learning. **Hard limit:** 4:00. Practice to land at 3:45.
+**Theme:** Continual Learning. Two scripts below: a **1-minute live script**
+(§ first) for showing real-time interventions fast with teammates, and the full
+**4-minute script** for the complete story. Practice the 4-min to land at 3:45.
+
+**The thesis (say this first, in either script):** AI is collapsing the cost of
+_writing_ code. More and more of every codebase is authored with AI assist — and
+increasingly by **autonomous agents**. So the bottleneck of software engineering
+is shifting away from engineering itself toward **organization, management, and
+project coordination**. Pair a team with hundreds of agents all committing to the
+same repo at once and it becomes **physically impossible for a human to track
+progress or avoid stepping on someone else's work.** Code generation scaled;
+human coordination did not. That gap is the new bottleneck.
 
 **The one-line story:** writing code isn't the bottleneck anymore — _coordinating
-who's writing what_ is. PodMan is a pair programmer for the whole team: it watches
-every member's work in real time, gives everyone live status without anyone having
-to interrupt anyone, and learns your team's dynamics so it nudges less and helps
-more over time.
+who (and what) is writing what_ is. PodMan is a pair programmer for the whole
+team — humans **and** agents: it watches every actor's work in real time, gives
+everyone live status without anyone having to interrupt anyone, catches collisions
+before they land, and learns your team's dynamics so it nudges less and helps more
+over time.
 
 **The hook to land:** a "quick five-minute question" actually costs ~25 minutes of
-lost focus — for two people. PodMan removes the reason to ask. Multiply the saved
-recovery time across every teammate, every day, and that is the value.
+lost focus — for two people. Now multiply that across a team plus a swarm of
+agents nobody can watch. PodMan removes the reason to ask and surfaces the
+collision no human could have caught in time. That recovery time, saved across
+every actor, every day, is the value.
+
+---
+
+## 1-Minute Live Script (you + teammates — real-time interventions)
+
+**Goal:** prove the core loop in 60 seconds — multiple people working at once,
+PodMan catches the collision and **notifies everyone live (card + voice)** with
+nobody having to ask. **Hard limit:** 1:00.
+
+**Setup before you start (off camera):**
+
+- Pod open on the shared screen (`podman.live`), all teammates joined with screen
+  share on. Sound on — voice is live for **every** intervention now.
+- Each teammate's git watcher running so local unpushed edits report in.
+- Have everyone with `README.md` open and ready to type. Pre-pick the two who
+  will collide first (e.g. you + a teammate).
+
+### 0:00–0:12 — The thesis (one breath)
+
+> "Writing code is basically free now — humans with AI, and soon swarms of
+> agents, all committing to one repo. Nobody can track that by hand. The
+> bottleneck isn't engineering anymore, it's coordination. Watch."
+
+_On screen:_ the pod view, teammate tiles live, activity stream moving.
+
+### 0:12–0:35 — The collision, caught live (the money shot)
+
+- On cue, **you and one teammate both edit `README.md`** and save (unpushed).
+- Within a cycle, a **conflict card appears on everyone's screen**:
+  _"Conflict: <you> + <teammate> both on README.md (unpushed)."_
+- The **Gemini voice fires out loud over LiveKit**: _"<you> and <teammate> are
+  both editing README.md. Please sync before pushing."_
+- Say it: "Neither of us asked the other. Neither of us was watching. PodMan saw
+  both screens plus local git, and told the whole team in real time."
+
+### 0:35–0:52 — It scales to the next actor
+
+- Have a **third teammate** now edit the same file (or a second file). A **new**
+  card + voice fires for the new pair — _it doesn't go silent on the second
+  collision._
+- Say it: "Every new actor that steps on live work gets caught — this is exactly
+  what breaks when you add agents you can't watch."
+
+### 0:52–1:00 — Close
+
+> "Real-time awareness for a whole team, humans and agents, with zero
+> interruptions. That's the coordination layer code generation never had."
+
+_Fallback:_ if voice doesn't fire, read the line aloud and point at the card —
+cards are the default path. If a card won't trigger, switch the colliding pair
+to a fresh file and re-save.
 
 ---
 
@@ -18,12 +83,15 @@ recovery time across every teammate, every day, and that is the value.
 
 ### 0:00–0:30 — The problem + hook
 
-> "AI made writing code easy. The thing still slowing teams down is coordination
-> — checking each other's work, re-planning collisions, and the constant 'what
-> are you working on?' A five-minute question really costs both people 25 minutes
-> of lost focus. PodMan is a pair programmer for the whole team: it watches
-> everyone's work live, so anyone can see another's status without interrupting
-> them — and it learns your team as it goes."
+> "AI made writing code almost free — humans with AI today, swarms of autonomous
+> agents tomorrow, all committing to the same repo. The bottleneck stopped being
+> engineering and became coordination: checking each other's work, re-planning
+> collisions, the constant 'what are you working on?' At agent scale no human can
+> even track it. A five-minute question already costs both people 25 minutes of
+> lost focus. PodMan is a pair programmer for the whole team — humans and agents:
+> it watches everyone's work live, so anyone sees another's status without
+> interrupting them, catches collisions before they land, and learns your team as
+> it goes."
 
 _On screen:_ the pod view, two teammates joined, screen-share tiles live.
 
@@ -108,10 +176,11 @@ _Built-by-us callout:_ `agents/podman-live-conversation/agent.py`.
 - "All on **DigitalOcean** — static frontend, API, and agent workers, supervised
   by systemd. The ambient score is **Gemini Lyria** generated per pod through the
   Interactions API."
-- Close: "Engineering ability stopped being the bottleneck — coordination is.
-  PodMan gives a whole team real-time awareness without the interruptions, catches
+- Close: "Engineering ability stopped being the bottleneck — coordination is, and
+  it only gets worse as agents start writing alongside us. PodMan gives a whole
+  team, humans and agents, real-time awareness without the interruptions, catches
   collisions before they cost an afternoon, and learns each team's dynamics so it
-  helps more over time. Saved focus, multiplied across every teammate. That's
+  helps more over time. Saved focus, multiplied across every actor. That's
   continual learning, shipped."
 
 ### 3:50–4:00 — Buffer / Q&A handoff
