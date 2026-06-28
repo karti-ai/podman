@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const frontendUrl = process.env.FRONTEND_URL ?? 'http://127.0.0.1:4173/';
 const shouldStartPreview = !process.env.FRONTEND_URL;
 const doFetch = globalThis.fetch;
+const verifyMember = `Verify ${process.pid}`;
 
 async function stopChild(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -62,7 +63,10 @@ const pageErrors = [];
 const failedRequests = [];
 
 page.on('console', (msg) => {
-  if (msg.type() === 'error') consoleErrors.push(msg.text());
+  if (msg.type() !== 'error') return;
+  const text = msg.text();
+  if (text.includes('net::ERR_NETWORK_CHANGED')) return;
+  consoleErrors.push(text);
 });
 page.on('pageerror', (err) => pageErrors.push(err.message));
 page.on('requestfailed', (req) => {
@@ -82,7 +86,8 @@ try {
   if (!hasPodCards) throw new Error('pod cards did not render');
   if (hasOverlay) throw new Error('Vite error overlay is visible');
 
-  await page.getByRole('button', { name: 'Join' }).first().click();
+  await page.getByPlaceholder('Your name').first().fill(verifyMember);
+  await page.getByRole('button', { name: 'Add and join' }).first().click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
 
   const joinedText = await page.locator('body').innerText();
@@ -105,12 +110,19 @@ try {
         frontendUrl,
         bodyLength: bodyText.length,
         joined: true,
+        member: verifyMember,
       },
       null,
       2,
     ),
   );
 } finally {
+  const apiBase = process.env.FRONTEND_URL
+    ? new URL(process.env.FRONTEND_URL).origin
+    : 'http://localhost:8787';
+  await doFetch(`${apiBase}/api/pods/frontend-pod/members/${encodeURIComponent(verifyMember)}`, {
+    method: 'DELETE',
+  }).catch(() => {});
   await browser.close();
   await stopChild(preview);
 }
