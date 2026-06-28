@@ -96,53 +96,93 @@ A browser PWA, an HTTP API service, LiveKit agent workers, and a
 memory/action layer. The screen signal flows through LiveKit, never a manual
 screenshot upload.
 
+### Infrastructure: LiveKit · Hermes · MongoDB · DigitalOcean
+
+How the real-time, action, memory, and hosting layers wire together. Everything
+under the droplet boundary is one systemd-supervised DigitalOcean box; LiveKit
+and Mongo Atlas are managed clouds it talks to.
+
 ```mermaid
 flowchart LR
-  subgraph Laptop["Engineer laptop"]
-    PWA["React PWA"]
-    Screen["Screen share track"]
-    Git["Git watcher<br/>scripts/podman-agent.mjs"]
-  end
+  Dev["Engineer browser<br/>React PWA + screen share"]
 
-  subgraph Realtime["LiveKit room"]
-    Room["Pod room"]
-    Data["Data topic<br/>podman.intervention"]
-    Audio["Audio tracks<br/>Gemini TTS + Lyria"]
-  end
-
-  subgraph Backend["PodMan backend"]
-    API["API service<br/>/api/token /api/pods /api/outcome"]
+  subgraph DO["DigitalOcean droplet — systemd-supervised"]
+    Caddy["Caddy<br/>serves static frontend · proxies /api"]
+    API["API service<br/>/api/token · /api/pods · /api/outcome"]
     Agent["Vision agent worker<br/>@livekit/rtc-node"]
-    Convo["Live conversation agent<br/>Gemini Live API (Python)"]
-    Vision["Gemini Vision<br/>structured JSON"]
-    Detector["Coordination detector<br/>collisions, blockers"]
+    Detector["Coordination detector<br/>collisions + blockers"]
+    Hermes["Hermes action layer<br/>cards · messages · urgent voice"]
+    PyAgent["Live conversation agent<br/>LiveKit Agents (Python)"]
   end
 
-  subgraph Memory["Memory and actions"]
-    Mongo["MongoDB Atlas<br/>observations, outcomes, vectors"]
-    GitHub["GitHub<br/>repo state + sync PR artifact"]
-    Hermes["Hermes action layer<br/>cards, messages, urgent voice"]
+  subgraph LK["LiveKit room — managed cloud"]
+    Tracks["Screen-share video tracks"]
+    DataCh["Data topic<br/>podman.intervention"]
+    AudioCh["Audio tracks<br/>TTS + Lyria music"]
   end
 
-  PWA -->|"POST /api/token"| API
-  API -->|"LiveKit JWT"| PWA
-  PWA --> Screen
-  Screen --> Room
-  Room --> Agent
-  Agent --> Vision
-  Vision --> Detector
-  Git --> Mongo
-  Detector --> Mongo
-  Detector --> GitHub
-  Detector --> Hermes
-  Hermes --> Data
-  Hermes --> Audio
-  Convo --> Audio
-  Convo --> Mongo
-  Data --> PWA
-  Audio --> PWA
-  PWA -->|"POST /api/outcome"| API
-  API --> Mongo
+  Mongo[("MongoDB Atlas<br/>observations · collisions<br/>interventions · outcomes · vectors")]
+
+  Dev -->|static assets| Caddy
+  Dev -->|"POST /api/*"| Caddy --> API
+  API -->|LiveKit JWT| Dev
+  Dev -->|publish screen| Tracks
+
+  Agent -->|subscribe frames| Tracks
+  Agent --> Detector --> Hermes
+  Hermes -->|cards / messages| DataCh
+  Hermes -->|urgent voice| AudioCh
+  PyAgent <-->|join room · speak| AudioCh
+  DataCh --> Dev
+  AudioCh --> Dev
+  Dev -->|"POST /api/outcome"| Caddy
+
+  API <--> Mongo
+  Agent -->|write observations| Mongo
+  Detector -->|read recall · write collisions| Mongo
+  Hermes -->|write interventions| Mongo
+  PyAgent -->|tool reads| Mongo
+```
+
+> Mongo connectivity is **required at boot** — the API and both agents ping Atlas
+> on startup and exit loudly rather than degrade silently.
+
+### Gemini: roles, models, and triggers
+
+Five distinct Gemini surfaces, each fired by a specific event in the pod and
+mapped to the file that calls it.
+
+```mermaid
+flowchart LR
+  subgraph Triggers["Trigger (event in the pod)"]
+    Frame["Sampled IDE frame<br/>from LiveKit screen track"]
+    NewEvent["New observation<br/>or collision"]
+    Talk["Engineer speaks<br/>in the room"]
+    Urgent["Hermes raises an<br/>urgent intervention"]
+    Session["Pod session<br/>active"]
+  end
+
+  subgraph G["Gemini surface · model · code"]
+    Vision["Vision<br/>gemini-2.0-flash<br/>backend/src/vision/gemini.ts"]
+    Embed["Embeddings<br/>gemini-embedding-001<br/>backend/src/memory/vectors.ts"]
+    Live["Live voice agent<br/>gemini-3.1-flash-live-preview<br/>agents/podman-live-conversation/agent.py"]
+    TTS["Urgent TTS<br/>gemini-3.1-flash-tts-preview<br/>backend/src/voice/live.ts"]
+    Lyria["Background music<br/>lyria-3-clip-preview<br/>backend/src/voice/music.ts"]
+  end
+
+  subgraph Out["Output"]
+    Ctx["Structured work context<br/>{file, symbol, activity, mode, research}"]
+    Recall["$vectorSearch recall<br/>prior intervention + outcome"]
+    Answer["Spoken answer over<br/>repo / git / memory tools"]
+    Voice["Spoken alert<br/>in the room"]
+    Score["Per-pod ambient<br/>score"]
+  end
+
+  Frame --> Vision --> Ctx
+  NewEvent --> Embed --> Recall
+  Talk --> Live --> Answer
+  Urgent --> TTS --> Voice
+  Session --> Lyria --> Score
 ```
 
 
