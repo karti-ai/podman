@@ -244,11 +244,9 @@ export class PodMan {
     };
     await recordIntervention(intervention);
 
-    await publishHermesIntervention(
-      this.room,
-      collision,
-      intervention,
-      collision.severity === 'critical' ? voiceLine : undefined,
-    );
+    // Voice every intervention, not just critical escalations. Priority is set
+    // by severity inside publishHermesIntervention: critical jumps the queue,
+    // the rest play sequentially so concurrent alerts don't garble each other.
+    await publishHermesIntervention(this.room, collision, intervention, voiceLine);
   }
 }

@@ -58,7 +58,10 @@ export async function publishHermesIntervention(
   void notifyCriticalLiveConversations(collision, intervention, voiceLine).catch((err) =>
     console.warn(`[live-conversation] critical notify failed: ${(err as Error).message}`),
   );
-  if (voiceLine) await speak(room, voiceLine, { priority: 'critical' });
+  if (voiceLine)
+    await speak(room, voiceLine, {
+      priority: collision.severity === 'critical' ? 'critical' : 'normal',
+    });
 }
 
 async function hermesToken(roomName: string): Promise<string> {
