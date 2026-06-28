@@ -219,7 +219,7 @@ function buildLoop(opts: {
       key: 'predict',
       title: 'PREDICT',
       value: String(riskPaths),
-      detail: `${riskPaths === 1 ? 'collision' : 'collisions'} flagged`,
+      detail: `open risk path${riskPaths === 1 ? '' : 's'}`,
     },
     { key: 'outcome', title: 'OUTCOME', value: `${accepted}/${dismissed}`, detail: 'accepted · dismissed' },
     {
@@ -549,30 +549,48 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
 
   layout(nodes);
 
+  // Metrics are derived from the FINAL de-noised graph (not raw docs) so the
+  // numbers match what's actually on screen. Counting raw collision signatures /
+  // accepted-outcome rows inflates them with test churn (e.g. 50 "risk paths" for
+  // 2 files), which reads as fake — these count distinct visible entities instead.
+  const finalEdges = [...b.edges.values()];
+
+  // Open risk paths = distinct files carrying a surviving collision (the triangles).
+  const riskFiles = new Set<string>();
+  for (const e of finalEdges) {
+    if (e.kind === 'touches' && b.nodes.get(e.source)?.kind === 'file') riskFiles.add(e.source);
+  }
+  const collisionNodeCount = nodes.filter((n) => n.kind === 'collision').length;
+  const riskPaths = riskFiles.size || collisionNodeCount;
+
+  // Learned owners = distinct engineers PodMan retained as owners from accepted
+  // interventions (the owns / learned_from edges actually drawn).
+  const ownerSet = new Set<string>();
+  for (const e of finalEdges) {
+    if (e.kind === 'learned_from') ownerSet.add(e.target);
+    if (e.kind === 'owns') ownerSet.add(e.source);
+  }
+  const learnedOwners = [...ownerSet].filter((id) => b.nodes.get(id)?.kind === 'engineer').length;
+
   const acceptedReal = outcomeDocs.filter((o) => o.accepted && o.wasRealCollision).length;
   const totalOutcomes = outcomeDocs.length;
-  const riskPaths = new Set(
-    collisionDocs.map(
-      (col) =>
-        (col as { memorySignature?: string }).memorySignature ??
-        `${normalizeFile(col.file)}#${col.symbol ?? ''}`,
-    ),
-  ).size;
+  const acceptRate = totalOutcomes ? Math.round((acceptedReal / totalOutcomes) * 100) : null;
+
   const metrics: PodGraphMetric[] = [
     {
       label: 'Learned owners',
-      value: String(acceptedReal),
-      detail: 'Ownership retained from accepted interventions.',
+      value: String(learnedOwners),
+      detail: 'Distinct owners retained from accepted interventions.',
     },
     {
       label: 'Open risk paths',
       value: String(riskPaths),
-      detail: 'Files with two or more converging editors.',
+      detail: `${riskPaths === 1 ? 'File' : 'Files'} with two or more converging editors.`,
     },
     {
       label: 'Accept rate',
-      value: totalOutcomes ? `${Math.round((acceptedReal / totalOutcomes) * 100)}%` : '—',
-      detail: 'Interventions accepted this session.',
+      value: acceptRate == null ? '—' : `${acceptRate}%`,
+      detail: 'Interventions accepted vs total this session.',
     },
   ];
 
@@ -589,8 +607,6 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
       (c) => (c as { embedding?: number[] }).embedding?.length,
     ).length;
   if (!vectorCount) vectorCount = collisionDocs.length;
-
-  const learnedOwners = Object.keys(ownership).length || acceptedReal;
 
   const loop = buildLoop({
     now,

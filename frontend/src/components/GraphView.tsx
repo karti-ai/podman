@@ -8,7 +8,7 @@ import { MetricsRail } from './graph/MetricsRail.js';
 import { LearningLoop } from './graph/LearningLoop.js';
 import { ActivityStream } from './graph/ActivityStream.js';
 import { SelectedNodePanel } from './graph/SelectedNodePanel.js';
-import { highlightFor, NODE_LEGEND, EDGE_LEGEND, type Mode } from './graph/encoding.js';
+import { highlightFor, flowNarrative, NODE_LEGEND, EDGE_LEGEND, type Mode } from './graph/encoding.js';
 
 const POLL_MS = 5000;
 
@@ -100,6 +100,7 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
     ? (graph?.edges ?? []).filter((e) => e.source === liveSelected || e.target === liveSelected)
         .length
     : 0;
+  const flow = graph && liveSelected ? flowNarrative(graph, liveSelected) : '';
 
   function pick(next: Mode) {
     setMode(next);
@@ -181,7 +182,7 @@ export function GraphView({ podId, onClose }: { podId: string; onClose: () => vo
                   <ActivityStream events={graph.activity ?? []} />
                 </div>
                 <div className="rounded-xl border bg-muted/40 p-4">
-                  <SelectedNodePanel node={sel} relCount={relCount} />
+                  <SelectedNodePanel node={sel} relCount={relCount} flow={flow} mode={mode} />
                 </div>
               </div>
 

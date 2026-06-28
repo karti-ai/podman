@@ -1,28 +1,32 @@
 import type { PodGraphNode } from '@podman/shared';
 import { Badge } from '@/components/ui/badge';
-import { statusColor, VIOLET } from './encoding.js';
+import { statusColor, modeBlurb, VIOLET, type Mode } from './encoding.js';
 
 export function SelectedNodePanel({
   node,
   relCount,
+  flow,
+  mode,
 }: {
   node: PodGraphNode | undefined;
   relCount: number;
+  flow: string;
+  mode: Mode;
 }) {
   if (!node) {
     return (
       <div className="flex h-full flex-col">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Continual learning
+          {mode === 'learn' ? 'Learning edges' : mode === 'all' ? 'Whole graph' : 'Risk path'}
         </p>
-        <h3 className="mb-2 font-heading text-base font-medium">It learned</h3>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          The violet{' '}
+        <h3 className="mb-2 font-heading text-base font-medium">What you're looking at</h3>
+        <p className="text-sm leading-relaxed text-muted-foreground">{modeBlurb(mode)}</p>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          Click any node to trace its{' '}
           <span className="font-medium" style={{ color: VIOLET }}>
-            learned_from
+            flow
           </span>{' '}
-          edges are ownership PodMan retained from accepted interventions — the graph gets sharper
-          every session. Click any node to trace its relationships, or drag to rearrange.
+          — what PodMan saw, flagged, and learned. Drag to rearrange.
         </p>
       </div>
     );
@@ -43,8 +47,16 @@ export function SelectedNodePanel({
         <span>Relationships</span>
         <span className="font-medium text-foreground">{relCount}</span>
       </div>
-      {node.summary && (
-        <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{node.summary}</p>
+      {flow && (
+        <>
+          <p className="mt-2.5 text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">
+            Flow
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-foreground/90">{flow}</p>
+        </>
+      )}
+      {node.summary && node.summary !== flow && (
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{node.summary}</p>
       )}
     </div>
   );
