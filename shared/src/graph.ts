@@ -71,6 +71,7 @@ export type PodGraphActivityKind =
   | 'intervention'
   | 'outcome'
   | 'learned'
+  | 'suppressed'
   | 'agent';
 
 export interface PodGraphActivity {

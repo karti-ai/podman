@@ -410,6 +410,32 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
 
   // 6. Outcomes: the supervised learning signal -> learned_from edges + owns.
   for (const out of outcomeDocs) {
+    // Negative-feedback beat: a dismissed outcome is the durable record behind
+    // the suppression at policy.ts:20 — the identical signature is now silenced.
+    // Surface it instead of dropping it (graph-discovery/policy.md:63).
+    if (!out.accepted) {
+      const ivS = interventionById.get(out.interventionId);
+      const colS = ivS ? collisionById.get(ivS.collisionId) : collisionById.get(out.collisionId);
+      if (colS) {
+        const fileS = normalizeFile(colS.file);
+        if (isFilePath(fileS)) {
+          const engsS = colS.engineers.join(' + ') || 'teammates';
+          pushActivity(
+            activity,
+            {
+              id: `suppressed:${out.interventionId}:${out.recordedAt}`,
+              at: out.recordedAt,
+              kind: 'suppressed',
+              title: `Suppressed — ${shortLabel(fileS)} learned as noise`,
+              detail: `${engsS} on ${fileS} was dismissed before — PodMan stays quiet on the repeat.`,
+              nodeId: colNodeFor.get(colS.id) ?? undefined,
+            },
+            activityIds,
+          );
+        }
+      }
+      continue; // dismissed rows never reach the accepted-only learned/owns path
+    }
     if (!out.accepted || !out.wasRealCollision) continue;
     const iv = interventionById.get(out.interventionId);
     const col = iv ? collisionById.get(iv.collisionId) : collisionById.get(out.collisionId);

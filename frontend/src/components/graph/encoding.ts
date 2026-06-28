@@ -28,6 +28,7 @@ export const ACTIVITY_TAG: Record<PodGraphActivityKind, { color: string; label: 
   outcome: { color: GREEN, label: 'OUTCOME' },
   learned: { color: VIOLET, label: 'LEARNED' },
   agent: { color: BLUE, label: 'AGENT' },
+  suppressed: { color: VIOLET, label: 'SUPPRESSED' },
 };
 
 export const KIND_COLOR: Record<PodGraphNodeKind, string> = {

@@ -524,6 +524,19 @@ no schema change. Owner: RSI track. Independent of the MongoDB-cleanup handoff.
    - Spec: `docs/continual-learning/spec.md:98-108`, `policy.md:35-42`.
    - Hardened per Codex review (name canonicalization + detection-time capture).
 
+4. **Step 4 - surface suppression in the activity stream (make the loop visible)** ✅
+   - Materialize `kind:'suppressed'` `PodGraphActivity` rows in
+     `backend/src/graph/live.ts`, derived from dismissed outcomes
+     (`!out.accepted`) — the durable record behind the suppression gate
+     (`policy.ts:20`). No new collection, no write path; rebuildable from Atlas.
+   - Join dismissed outcome → intervention → collision; skip orphans (the
+     historic dismissals resolve to no collision, so this only lights up for
+     fresh dismissed signatures). Adds the `suppressed` activity `kind` to
+     `shared/src/graph.ts` + `docs/continual-learning/spec.md` and a violet
+     SUPPRESSED chip in `frontend/src/components/graph/encoding.ts`.
+   - Mandated visible by `docs/graph-discovery/policy.md:63` ("Do not hide false
+     positives from activity or memory").
+
 Follow-ups (separate rungs, not in this change): Step 4-5 `strategy_versions` +
 Gemini-proposed `LearningProposal` slice; Step 6 durable `owns` write; seed a
 clean demo pod with a repeated dismissed signature (the historic dismissals are

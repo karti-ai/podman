@@ -220,8 +220,13 @@ activity[]
 Allowed `kind` values:
 
 ```text
-editing, collision, intervention, outcome, learned, agent
+editing, collision, intervention, outcome, learned, suppressed, agent
 ```
+
+`suppressed` marks a previously-dismissed collision signature recurring while
+PodMan stays quiet — derived from outcomes where `accepted:false`. Surfacing it
+is mandated by `graph-discovery/policy.md:63` ("Do not hide false positives from
+activity or memory").
 
 ## Acceptance Criteria
 
