@@ -30,6 +30,27 @@
       content="Ambient AI teammate that catches merge collisions before anyone pushes."
     />
     <meta name="twitter:image" content="https://www.podman.live/og.png" />
+
+    <script>
+      // Tear down any service worker we shipped earlier (vite-plugin-pwa).
+      // PodMan runs no PWA in production: we deploy continuously and SW-driven
+      // reloads break the live demo. This unregisters leftover workers and
+      // clears their caches on every load so previously-affected browsers
+      // self-heal — no manual DevTools needed. It does NOT reload the page and
+      // is a no-op once nothing is registered.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((regs) => regs.forEach((r) => r.unregister()))
+          .catch(() => {});
+        if (window.caches && caches.keys) {
+          caches
+            .keys()
+            .then((keys) => keys.forEach((k) => caches.delete(k)))
+            .catch(() => {});
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

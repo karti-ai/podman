@@ -1,18 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-    // Self-destroying during active development: unregisters any previously
-    // installed service worker and clears its caches so deploys are always
-    // fresh (no stale UI). Re-enable a precaching PWA before the demo.
-    VitePWA({ selfDestroying: true }),
-  ],
+  // No service worker in production. We deploy continuously during the event and
+  // any SW (even vite-plugin-pwa's self-destroying one) forces open tabs to
+  // reload, which breaks the live demo. Existing SWs are torn down by the
+  // cleanup snippet in index.html. Re-add a precaching PWA only post-event.
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
   },
