@@ -100,7 +100,14 @@ export class PodMan {
     if (this.activeConflicts.has(key)) return; // single-shot: already voiced, still unresolved
 
     const prior = await recallSimilar(collision); // Loop A: exact/vector recall raises confidence
-    if (prior) collision.severity = 'critical';
+    // Only escalate to critical (which triggers the spoken alert) when the
+    // recalled prior was an *accepted real* collision. Blanket-escalating every
+    // recall — including dismissed/false-positive priors — masked the learned
+    // routing in preferredAction and made recalled noise scream "CRITICAL".
+    // (RSI Step 2 — continual-learning/policy.md:62-63, plan.md:66)
+    if (prior?.priorOutcome?.accepted && prior?.priorOutcome?.wasRealCollision) {
+      collision.severity = 'critical';
+    }
     if (!shouldIntervene(collision, prior)) return; // Loop B: policy gate
 
     this.activeConflicts.add(key); // claim now we're alerting; re-armed in onScreenFrame on resolution

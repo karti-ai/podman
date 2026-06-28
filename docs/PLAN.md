@@ -484,6 +484,37 @@ artifact.
       recorded backup.
     - Keep backup video on a separate device.
 
+### P0.5 - RSI negative-feedback activation (continual-learning)
+
+The continual-learning loop records outcomes but never feeds the negative
+signal back. Live Atlas (2026-06-28): `outcomes` = 22 accepted / 85 dismissed,
+yet `wasRealCollision` is `true` in 107/107 (hardcoded), so the suppression
+gate is dead and dismissals are unused. These two rungs activate the loop with
+no schema change. Owner: RSI track. Independent of the MongoDB-cleanup handoff.
+
+1. **Step 1 - suppress on prior dismissal alone** ✅
+   - `backend/src/memory/policy.ts` `shouldIntervene`: remove the dead
+     `&& !priorOutcome.wasRealCollision` term so a prior `accepted === false`
+     suppresses the next identical-signature nudge.
+   - Spec: `docs/continual-learning/policy.md:41` (dismissed = negative signal),
+     `spec.md:163` (dismissals adapt suppression).
+   - Caveat: recall is single-shot most-recent (`memory/vectors.ts`), so this is
+     "last-outcome-wins" until Step 3 (derive `wasRealCollision`) lands.
+
+2. **Step 2 - gate the recall severity escalation** ✅
+   - `backend/src/agent/podman.ts` `handle`: only force `severity = 'critical'`
+     when the recalled prior was an accepted *real* collision, instead of
+     blanket-escalating every recall. Surfaces the learned routing in
+     `preferredAction`; stops dismissed/false priors over-escalating to voice.
+   - Spec: `docs/continual-learning/policy.md:62-63` (prefer prior accepted
+     kind), `plan.md:66` (second similar event behaves differently).
+
+Follow-ups (separate rungs, not in this change): Step 3 derive
+`wasRealCollision` from git overlap; Step 4-5 `strategy_versions` +
+Gemini-proposed `LearningProposal` slice; seed a clean demo pod with a repeated
+dismissed signature (the historic 85 dismissals are orphaned — `collisionId`
+resolves to no collision — so they cannot drive the demo verifier).
+
 ### P1 - polish the money moment
 
 - Add visible live inference captions in the PWA.
