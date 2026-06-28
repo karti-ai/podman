@@ -8,6 +8,7 @@
     "dev": "pnpm run dev:server",
     "dev:server": "tsx watch src/server.ts",
     "dev:agent": "tsx watch src/agent.ts",
+    "graph:seed": "tsx src/graph/seed.ts",
     "start": "node dist/server.js",
     "start:server": "node dist/server.js",
     "start:agent": "node dist/agent.js",

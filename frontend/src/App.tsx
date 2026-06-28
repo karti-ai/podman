@@ -17,6 +17,7 @@ import * as api from './lib/api.js';
 import { PodCard } from './components/PodCard.js';
 import { CreatePodForm } from './components/CreatePodForm.js';
 import { PodView } from './components/PodView.js';
+import { GraphView } from './components/GraphView.js';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,7 @@ export default function App() {
   const [devMode, setDevMode] = useState(false);
   const [room, setRoom] = useState<Room | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [graphPodId, setGraphPodId] = useState<string | null>(null);
 
   const joinedPod = joinedPodId ? (pods.find((p) => p.id === joinedPodId) ?? null) : null;
 
@@ -232,6 +234,10 @@ export default function App() {
     );
   }
 
+  if (graphPodId) {
+    return <GraphView podId={graphPodId} onClose={() => setGraphPodId(null)} />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8">
@@ -262,6 +268,10 @@ export default function App() {
                 <ShieldCheckIcon data-icon="inline-start" />
                 Privacy-limited
               </Badge>
+              <Button variant="outline" onClick={() => setGraphPodId(pods[0]?.id ?? 'demo-pod')}>
+                <BrainCircuitIcon data-icon="inline-start" />
+                Team memory
+              </Button>
               <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
                 <RefreshCwIcon data-icon="inline-start" />
                 Refresh
