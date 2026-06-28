@@ -463,16 +463,23 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
   const suppressionDocs = await c.suppressions
     .find({ podId })
     .sort({ suppressedAt: -1 })
-    .limit(20)
+    .limit(50)
     .toArray();
+  // Collapse to one beat per file (keep the most recent — docs are sorted desc)
+  // so pre-fix duplicate rows never render as spam. The stable per-file id also
+  // dedupes through pushActivity's `seen` set.
+  const seenSuppressedFiles = new Set<string>();
   for (const s of suppressionDocs) {
     const sFile = normalizeFile(s.file);
     if (!isFilePath(sFile)) continue;
+    const fileKey = sFile.toLowerCase();
+    if (seenSuppressedFiles.has(fileKey)) continue;
+    seenSuppressedFiles.add(fileKey);
     const sEngs = (s.engineers ?? []).join(' + ') || 'teammates';
     pushActivity(
       activity,
       {
-        id: `suppressed:${s.id}`,
+        id: `suppressed:${fileKey}`,
         at: s.suppressedAt,
         kind: 'suppressed',
         title: `Suppressed — ${shortLabel(sFile)} repeat silenced`,
@@ -520,7 +527,11 @@ export async function materializePodGraph(podId: string): Promise<PodGraph | nul
 
   const nodes = [...b.nodes.values()];
   // No real activity beyond the bare roster -> let the caller fall back to demo.
-  const hasActivity = nodes.some((n) => n.kind !== 'engineer');
+  // Suppression beats are real negative-feedback proof even when they add no
+  // nodes/edges, so they satisfy the gate too — a clean pod with preserved
+  // suppressions must not fall back to the demo graph and hide the proof.
+  const hasSuppressed = activity.some((a) => a.kind === 'suppressed');
+  const hasActivity = hasSuppressed || nodes.some((n) => n.kind !== 'engineer');
   if (!hasActivity) return null;
 
   layout(nodes);

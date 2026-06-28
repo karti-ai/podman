@@ -151,12 +151,15 @@ export class PodMan {
       // durable suppressed-repeat event (timestamped now, at the repeat) so the
       // activity stream shows the learning instead of nothing.
       if (prior?.priorOutcome && !prior.priorOutcome.accepted) {
-        void recordSuppression(
+        // Mark handled first — like the alert path below — so we record ONE
+        // suppressed-repeat per recurrence, not once per frame; it re-arms via
+        // the resolution sweep in onScreenFrame. Awaited like recordCollision so
+        // the durable learning proof is reliably written.
+        this.activeConflicts.add(key);
+        await recordSuppression(
           collision,
           prior.priorOutcome.interventionId,
           prior.priorOutcome.recordedAt,
-        ).catch((err) =>
-          console.error(`[memory] suppression record failed: ${(err as Error).message}`),
         );
       }
       return; // Loop B: policy gate
