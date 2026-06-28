@@ -524,7 +524,10 @@ export function PodView({
                 </Card>
               </aside>
             </main>
-            <div ref={audioRef} className="hidden" />
+            <div
+              ref={audioRef}
+              className="pointer-events-none fixed size-px overflow-hidden opacity-0"
+            />
           </div>
         </SidebarInset>
         <ActivitySidebar

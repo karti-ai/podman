@@ -5,6 +5,7 @@ import {
   LocalAudioTrack,
   TrackPublishOptions,
   TrackSource,
+  type LocalParticipant,
   type Room,
 } from '@livekit/rtc-node';
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from '@google/genai';
@@ -14,8 +15,11 @@ import { env } from '../env.js';
 const SAMPLE_RATE = 24_000;
 const CHANNELS = 1;
 const FRAME_SAMPLES = SAMPLE_RATE / 10;
+const VOICE_QUEUE_MS = 30_000;
+const VOICE_TRACK_PREFIX = 'podman-hermes-voice';
 const encoder = new TextEncoder();
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+let voiceQueue: Promise<void> = Promise.resolve();
 
 function ttsPrompt(message: string): string {
   return [
@@ -33,6 +37,17 @@ async function publishVoiceCue(room: Room, message: string): Promise<void> {
     reliable: true,
     topic: DATA_TOPIC,
   });
+}
+
+async function unpublishVoiceTracks(localParticipant: LocalParticipant): Promise<void> {
+  const publications = Array.from(localParticipant.trackPublications.values()).filter(
+    (publication) => publication.name?.startsWith(VOICE_TRACK_PREFIX) && publication.sid,
+  );
+  for (const publication of publications) {
+    await localParticipant.unpublishTrack(publication.sid!, true).catch((err) => {
+      console.warn(`[voice] stale track cleanup failed: ${(err as Error).message}`);
+    });
+  }
 }
 
 function audioFrameFromBase64(data: string, mimeType?: string): AudioFrame | null {
@@ -127,6 +142,42 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
   session.close();
 }
 
+async function waitForVoicePlayout(source: AudioSource): Promise<void> {
+  if (source.queuedDuration <= 0) return;
+  await Promise.race([
+    source.waitForPlayout(),
+    new Promise((resolve) => setTimeout(resolve, VOICE_QUEUE_MS + 2_000)),
+  ]);
+}
+
+async function speakAudio(room: Room, message: string): Promise<void> {
+  const localParticipant = room.localParticipant;
+  if (!localParticipant) return;
+  await unpublishVoiceTracks(localParticipant);
+  const source = new AudioSource(SAMPLE_RATE, CHANNELS, VOICE_QUEUE_MS);
+  const track = LocalAudioTrack.createAudioTrack(`${VOICE_TRACK_PREFIX}-${Date.now()}`, source);
+  const options = new TrackPublishOptions();
+  options.source = TrackSource.SOURCE_UNKNOWN;
+  let publicationSid: string | undefined;
+
+  try {
+    const publication = await localParticipant.publishTrack(track, options);
+    publicationSid = publication.sid;
+    if (env.GEMINI_LIVE_MODEL.includes('tts')) await speakWithTts(source, message);
+    else await speakWithLive(source, message);
+    await waitForVoicePlayout(source);
+  } catch (err) {
+    console.warn(`[voice] Gemini voice publish failed: ${(err as Error).message}`);
+  } finally {
+    if (publicationSid) {
+      await localParticipant.unpublishTrack(publicationSid, true).catch((err) => {
+        console.warn(`[voice] track unpublish failed: ${(err as Error).message}`);
+      });
+    }
+    await source.close().catch(() => {});
+  }
+}
+
 /**
  * Speak a message into the LiveKit room using Gemini audio. A data-channel
  * VOICE_CUE is sent first so clients still get the cue if audio generation or
@@ -134,21 +185,6 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
  */
 export async function speak(room: Room, message: string): Promise<void> {
   await publishVoiceCue(room, message);
-  if (!room.localParticipant) return;
-
-  const source = new AudioSource(SAMPLE_RATE, CHANNELS);
-  const track = LocalAudioTrack.createAudioTrack('podman-hermes-voice', source);
-  const options = new TrackPublishOptions();
-  options.source = TrackSource.SOURCE_MICROPHONE;
-
-  try {
-    const publication = await room.localParticipant.publishTrack(track, options);
-    if (env.GEMINI_LIVE_MODEL.includes('tts')) await speakWithTts(source, message);
-    else await speakWithLive(source, message);
-    if (publication.sid) await room.localParticipant.unpublishTrack(publication.sid, true);
-    await source.close();
-  } catch (err) {
-    console.warn(`[voice] Gemini voice publish failed: ${(err as Error).message}`);
-    await source.close().catch(() => {});
-  }
+  voiceQueue = voiceQueue.catch(() => {}).then(() => speakAudio(room, message));
+  await voiceQueue;
 }
