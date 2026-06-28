@@ -262,8 +262,8 @@ try {
   await podCard.getByPlaceholder('Your name').fill(verifyMember);
   await podCard.getByRole('button', { name: 'Add and join' }).click();
   await page.getByRole('button', { name: 'Share screen' }).waitFor({ timeout: 15_000 });
-  await page.getByText('My stream').waitFor({ timeout: 15_000 });
-  await page.getByText('Team stream').waitFor({ timeout: 15_000 });
+  await page.getByRole('heading', { name: 'My stream' }).waitFor({ timeout: 15_000 });
+  await page.getByRole('heading', { name: 'Team stream' }).waitFor({ timeout: 15_000 });
 
   const joinedText = await page.locator('body').innerText();
   const hasPodView =
