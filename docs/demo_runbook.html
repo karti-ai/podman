@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PodMan — Demo Runbook</title>
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#121826; --panel2:#0e1421; --ink:#e6edf6; --muted:#9fb0c3;
+    --line:#23304a; --blue:#5b9bff; --violet:#a78bfa; --red:#ff6b6b; --amber:#f4b942;
+    --green:#43d39e; --slate:#8aa0b8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#15203a 0,var(--bg) 55%);
+       color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 22px 80px}
+  header{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:26px}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.3px}
+  h1 .dot{color:var(--green)}
+  .sub{color:var(--muted);font-size:15px;max-width:680px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.14em;color:var(--blue);
+     margin:34px 0 12px;border-left:3px solid var(--blue);padding-left:10px}
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+      padding:16px 18px;overflow:auto;color:#cfe0f5;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .grid{display:grid;gap:14px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+        border-radius:12px;padding:16px 18px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+  td.t{white-space:nowrap;color:var(--violet);font-variant-numeric:tabular-nums;font-weight:600}
+  .say{color:var(--green)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em}
+  .p-blue{background:rgba(91,155,255,.16);color:var(--blue)} .p-violet{background:rgba(167,139,250,.16);color:var(--violet)}
+  .p-green{background:rgba(67,211,158,.16);color:var(--green)} .p-amber{background:rgba(244,185,66,.16);color:var(--amber)}
+  .warn{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.4);border-radius:12px;padding:14px 18px}
+  .warn h3{margin:0 0 8px;color:var(--red);font-size:14px;letter-spacing:.02em}
+  ol{margin:0;padding-left:20px} ol li{margin:6px 0}
+  code{background:#0a1220;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#bcd4f2;font-size:12.5px}
+  .muted{color:var(--muted)} .spine{color:var(--green);font-weight:600}
+  footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>PodMan <span class="dot">●</span> Demo Runbook</h1>
+  <div class="sub">A pair programmer for the whole team. It watches everyone's work live, catches
+  collisions <em>before the push</em> (when GitHub still can't see them), and learns the team's
+  dynamics so it nudges less and helps more over time.</div>
+</header>
+
+<div class="card">
+  <strong>The 10-second story:</strong> <span class="muted">Coding isn't the bottleneck anymore —
+  <em>coordination</em> is. PodMan gives a team real-time awareness with zero interruptions, catches
+  the pre-push collision that costs an afternoon, and the Team-Memory Graph proves it learned —
+  materialized live from MongoDB, not a mock.</span>
+</div>
+
+<h2>How it works — architecture</h2>
+<pre>
+                              ░ PodMan data flow ░
+
+   ┌──────────────┐   screen-share track    ┌────────────────────────────┐
+   │  Engineers   │ ──────────────────────▶ │       LiveKit Cloud         │
+   │ (browsers)   │ ◀───────────────────────│      room = "demo-pod"      │
+   └──────┬───────┘   cards · voice · cues   └─────────────┬──────────────┘
+          │            (data channel)                      │ frames @ ~1 fps
+          │ live graph (poll 5s)                            │  + local git truth
+          │                                                 ▼
+          │                              ┌────────────────────────────────────┐
+          │                              │   HERMES AGENT  (Node, podman-hermes)│
+          │                              │   frame ─▶ GEMINI VISION  (file/    │
+          │                              │            symbol/activity)          │
+          │                              │   fuse with git watcher (unpushed!) │
+          │                              │   ─▶ detect same-file collision     │
+          │                              │   ─▶ Gemini TTS voice over LiveKit   │
+          │                              └──────────────────┬───────────────────┘
+          │                                                 │ read / write
+   ┌──────┴────────────┐    materialize live    ┌───────────▼──────────────────┐
+   │  TEAM-MEMORY      │ ◀──────────────────────│        MongoDB Atlas          │
+   │  GRAPH  (SVG)     │   graph/live.ts         │  observations · collisions    │
+   │  owns/edits/      │                         │  interventions · outcomes     │
+   │  collides/        │                         │  team_model · graph_nodes/edges│
+   │  learned_from     │                         │  + $vectorSearch recall        │
+   └───────────────────┘                         └───────────────────────────────┘
+
+   Infra: DigitalOcean droplet · systemd-supervised API + agent · Caddy static frontend
+   Models: Gemini (Vision · TTS · Live voice · embeddings · Lyria ambient score)
+</pre>
+
+<h2>How it works — the continual-learning loop</h2>
+<pre>
+        observe  ──▶  store  ──▶  predict  ──▶  outcome  ──▶  adapt
+          │            │            │             │            │
+       Gemini       MongoDB     same-file     accept /      learned_from
+       Vision +     records     overlap       dismiss        edge + owner
+       git truth                detected      (1 tap)        persists
+          ▲                                                     │
+          └─────────────────  recall ($vectorSearch)  ◀─────────┘
+                   "Seen before." → escalates on a repeat
+
+   The proof: one accept/dismiss tap — no retraining, no labels — changes the
+   NEXT run. Run 2 of the same collision says "Seen before." and a violet
+   learned_from edge appears on the graph. That edge is read straight from Atlas.
+</pre>
+
+<h2>The 3-minute demo (read off this)</h2>
+<table>
+  <thead><tr><th>Time</th><th>Do</th><th>Say — land the value</th></tr></thead>
+  <tbody>
+    <tr><td class="t">0:00</td><td>Pod view, two live screen tiles</td>
+      <td class="say">"Coordination is the bottleneck now, not coding. PodMan watches everyone's work live — nobody has to ask 'what are you on?'"</td></tr>
+    <tr><td class="t">0:30</td><td>Point at tiles; activity stream fills</td>
+      <td class="say">"Real screen-shares over <b>LiveKit</b>; each frame → <b>Gemini Vision</b> → file/symbol/activity. A perception layer, not a chatbot."</td></tr>
+    <tr><td class="t">1:05</td><td>Two engineers edit the <b>same file</b>, unpushed</td>
+      <td class="say">"GitHub can't see this — nothing's pushed. We fuse live screen context with <b>local git truth</b>." → collision card appears.</td></tr>
+    <tr><td class="t">1:40</td><td><b>Accept</b> the card</td>
+      <td class="say">Real <b>GitHub sync-PR</b> created + outcome recorded. "One tap closes the loop."</td></tr>
+    <tr><td class="t">2:10</td><td><b>Trigger the same collision again</b></td>
+      <td class="say">Card now says <b>"Seen before."</b> and escalates to the <b>Gemini TTS voice</b>. "It recalled the prior event from <b>MongoDB Atlas vector search</b> and escalated — that's the learning."</td></tr>
+    <tr><td class="t">2:35</td><td>Cut to <b>GraphView</b></td>
+      <td class="say">"This graph is materialized <b>live from MongoDB right now</b> — and here's the <b>learned_from edge</b>: PodMan learned who owns this file. Not a mock."</td></tr>
+    <tr><td class="t">3:00</td><td>Stack + close</td>
+      <td class="say">"All on <b>DigitalOcean</b>, systemd-supervised; ambient score is <b>Gemini Lyria</b>. Awareness, collisions caught pre-push, memory that sharpens each session."</td></tr>
+  </tbody>
+</table>
+
+<h2>Sponsor coverage — say each ≥ once</h2>
+<table>
+  <thead><tr><th>Prize</th><th>Spoken moment</th><th>Beat</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill p-blue">Gemini</span></td><td>Vision perception · TTS voice · Lyria score (Live conversation if time)</td><td class="muted">0:30 · 2:10 · 3:00</td></tr>
+    <tr><td><span class="pill p-violet">LiveKit</span></td><td>"real screen-shares over LiveKit"; TTS audio over LiveKit</td><td class="muted">0:30 · 2:10</td></tr>
+    <tr><td><span class="pill p-green">MongoDB</span></td><td>"Atlas vector-search recall" · "graph materialized live from MongoDB"</td><td class="muted">2:10 · 2:35</td></tr>
+    <tr><td><span class="pill p-amber">DigitalOcean</span></td><td>"all on DigitalOcean, systemd-supervised workers"</td><td class="muted">3:00</td></tr>
+  </tbody>
+</table>
+
+<h2 style="color:var(--red);border-color:var(--red)">⛔ Last-hour caveats — read before you run</h2>
+<div class="warn">
+  <h3>1 · Suppression is DISABLED for the demo</h3>
+  <div class="muted">Every collision now surfaces (good — no accidental silencing). The old
+  <em>"it learned to stay QUIET / no card fires"</em> beat will <b>not</b> work. Use the
+  <b>escalate</b> beat instead: trigger the same collision again → <b>"Seen before." + voice +
+  learned_from edge</b>. Don't promise silence on stage.</div>
+</div>
+<div class="warn" style="margin-top:12px">
+  <h3>2 · Do NOT redeploy prod</h3>
+  <div class="muted">The live build has demo code not on <code>main</code> (e.g. <code>userPodContext</code>);
+  redeploying would remove it <em>and</em> surface stale "SUPPRESSED" beats. If the auto-deploy timer is on,
+  stop it: <code>systemctl stop podman-hermes-sync-deploy.timer</code>.</div>
+</div>
+<div class="warn" style="margin-top:12px">
+  <h3>3 · Never debug on stage</h3>
+  <div class="muted">Narrate, fall back to the backup recording, keep moving.</div>
+</div>
+
+<h2>If it breaks — live recovery</h2>
+<table>
+  <thead><tr><th>Failure</th><th>Recovery</th></tr></thead>
+  <tbody>
+    <tr><td>Voice doesn't fire</td><td>Cut to the card, say the line aloud — cards are the default path. (Click "Enable audio" in-room first!)</td></tr>
+    <tr><td>Collision won't trigger</td><td>Use the backup recording for that beat; keep narrating.</td></tr>
+    <tr><td>Graph looks empty / odd</td><td>Reload once; if still off, narrate from the recording.</td></tr>
+    <tr><td>Agent silent</td><td>Suspect a duplicate <code>podman-hermes</code> process, not the UI — but don't fix on stage.</td></tr>
+  </tbody>
+</table>
+
+<h2>Pre-flight checklist</h2>
+<div class="card">
+  <ol>
+    <li><code>curl https://podman.live/health</code> → <code>{"ok":true}</code></li>
+    <li>Deploy timer stopped; exactly one agent — <code>systemctl status podman-platform-agent</code></li>
+    <li>Browser on the pod; <b>click "Enable audio"</b> (TTS needs it)</li>
+    <li>Backup recording cued on a second device</li>
+    <li>Two screen-shares live (the two "engineers")</li>
+  </ol>
+</div>
+
+<footer>
+  <div class="spine">The spine: live awareness → collision caught pre-push → accept → "Seen before." + voice + learned_from edge → "this graph is live from MongoDB."</div>
+  <div style="margin-top:6px">Runs on the <code>demo</code> branch (ahead of <code>main</code>). Suppression intentionally off this run. · Generated for the final demo.</div>
+</footer>
+
+</div>
+</body>
+</html>
