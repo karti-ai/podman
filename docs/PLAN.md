@@ -319,6 +319,7 @@ LIVEKIT_API_SECRET=
 GEMINI_API_KEY=
 GEMINI_VISION_MODEL=
 GEMINI_LIVE_MODEL=
+GEMINI_TTS_VOICE=
 
 GITHUB_TOKEN=
 GITHUB_REPO=karti-ai/podman
@@ -361,9 +362,8 @@ Keep all non-`VITE_` secrets server-side.
 - Use low media resolution for ambient screen watching; reserve higher
   resolution for debugging or targeted inspection.
 - Never expose `GEMINI_API_KEY` to the browser.
-- Gemini Live API is still a risk for the first demo path. Use card + Hermes
-  message first; add browser TTS or pre-generated voice fallback before relying
-  on Gemini Live for stage audio.
+- Use card + Hermes message first. For urgent stage audio, default to Gemini TTS
+  published through LiveKit; keep browser TTS only as an explicit fallback flag.
 - Keep model IDs in env so preview/availability changes do not require code
   changes.
 
@@ -484,7 +484,8 @@ artifact.
 
 - Add visible live inference captions in the PWA.
 - Add a small memory stats panel backed by `/api/memory/stats`.
-- Add browser-side TTS or pre-generated voice fallback for urgent interventions.
+- Keep browser-side TTS as an explicit demo fallback only; Gemini TTS over
+  LiveKit is the default urgent-voice path.
 - Add Hermes notification bridge once the target channel is chosen.
 - Improve research cards with compatibility, install effort, docs quality, repo
   health, and security/trust signals.
@@ -504,7 +505,7 @@ artifact.
 - Full auth/accounts.
 - Slack/Linear/Jira integrations unless Hermes requires one immediately.
 - Complex dashboards.
-- Server-published audio if browser/pre-generated voice proves escalation.
+- Live voice polish beyond the Gemini TTS urgent-alert path.
 - Vector Search if exact Mongo recall demonstrates the learning beat.
 
 ---

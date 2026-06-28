@@ -43,7 +43,7 @@ Small software teams: hackathon squads, startup engineering teams, student dev t
   - `BLOCKER_DETECTED` — engineer appears stuck; another teammate can unblock
   - `DUPLICATE_WORK` — 2+ engineers working on the same file simultaneously
 - Generate a 1–2 sentence proactive voice nudge
-- Deliver it into the LiveKit room via Gemini Live 2.5
+- Deliver it into the LiveKit room as Gemini TTS audio
 
 ---
 
@@ -60,7 +60,7 @@ The system gets demonstrably more useful the more it is used, with no user confi
 
 ## Architecture (one paragraph)
 
-Each engineer opens a browser PWA on their laptop. The PWA captures a screen frame every 30 seconds via `getDisplayMedia` and POSTs it to Hermes, the server-side orchestrator running on DigitalOcean. Hermes calls Gemini Vision to extract structured context, writes it to MongoDB Atlas, updates the ownership map, and runs event detection across all active engineers. When a coordination event fires, Hermes generates a short spoken message and publishes it as audio into the team's LiveKit room via Gemini Live 2.5. Engineers hear PodMan through their earbuds. No Slack. No tab switching. No interruption to the editor flow.
+Each engineer opens a browser PWA on their laptop. The PWA captures live IDE context through LiveKit screen sharing and scheduled local git reports. Hermes, the server-side orchestrator running on DigitalOcean, calls Gemini Vision to extract structured context, writes it to MongoDB Atlas, updates the ownership map, and runs event detection across all active engineers. When a coordination event fires, Hermes generates a short spoken message, asks Gemini TTS for natural audio, and publishes that audio into the team's LiveKit room. Engineers hear PodMan through their earbuds. No Slack. No tab switching. No interruption to the editor flow.
 
 ---
 
@@ -88,6 +88,6 @@ Each engineer opens a browser PWA on their laptop. The PWA captures a screen fra
 
 | Prize                 | How PodMan earns it                                                                                   |
 | --------------------- | ----------------------------------------------------------------------------------------------------- |
-| Best Gemini 3.5 / 2.5 | Gemini Vision for screen understanding + Gemini Live 2.5 for voice output                             |
+| Best Gemini 3.5 / 2.5 | Gemini Vision for screen understanding + Gemini TTS for urgent voice output                           |
 | Best LiveKit          | LiveKit is the real-time backbone for room presence and voice delivery — load-bearing, not decorative |
 | Best DigitalOcean     | Hermes deployed on DigitalOcean App Platform; MongoDB Atlas on DO-adjacent infrastructure             |

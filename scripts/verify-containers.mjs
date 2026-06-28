@@ -24,6 +24,7 @@ const containerEnv = {
   GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? 'verify-gemini',
   GEMINI_VISION_MODEL: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.0-flash',
   GEMINI_LIVE_MODEL: process.env.GEMINI_LIVE_MODEL ?? 'gemini-3.1-flash-tts-preview',
+  GEMINI_TTS_VOICE: process.env.GEMINI_TTS_VOICE ?? 'Charon',
   GEMINI_EMBEDDING_MODEL: process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-001',
   GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? 'verify-github',
   GITHUB_REPO: process.env.GITHUB_REPO ?? 'karti-ai/podman',

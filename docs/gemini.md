@@ -112,23 +112,24 @@ Respond with the message text only.
 ## 4. Voice Output — Gemini TTS via LiveKit
 
 **Model:** `gemini-3.1-flash-tts-preview`
+**Default voice:** `Charon`
 
-**Integration:** Hermes generates Gemini TTS audio and publishes it as a LiveKit audio track. The code still preserves a Gemini Live path for future available Live models.
+**Integration:** Hermes asks Gemini TTS for short PCM audio, then publishes that audio into the room as a short LiveKit audio track. The code still preserves a Gemini Live path for future available Live models.
 
 **Flow:**
 
 1. Nudge message text generated (step 3)
-2. Hermes passes text to Gemini Live via LiveKit Agents
-3. Gemini Live streams audio back in real-time
-4. LiveKit publishes audio into the pod room
-5. All participants hear it through their audio output
+2. Hermes wraps it in a natural-speaking prompt for Gemini TTS
+3. Gemini returns audio with the configured prebuilt voice
+4. Hermes publishes the audio into the LiveKit room
+5. The frontend still renders the `VOICE_CUE` text, but browser TTS is off unless explicitly enabled
 
-**Why Gemini Live (not plain TTS):**
+**Why Gemini TTS first:**
 
-- Streams audio directly — no intermediate WAV file conversion
-- Latency ~300–500ms from text to first audio packet
-- Natural-sounding voice
-- Strong prize story: Gemini Live 2.5 is the headline model
+- Natural voice quality is better than browser `speechSynthesis`
+- Tone and pacing can be steered directly in the prompt
+- The voice name is configurable with `GEMINI_TTS_VOICE`
+- LiveKit remains the delivery layer, so teammates hear the same room audio
 
 ---
 

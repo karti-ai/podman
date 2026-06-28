@@ -4,13 +4,11 @@ import type { DataMessage, HermesMessage, Intervention, InterventionStatus } fro
 import { DATA_TOPIC } from '@podman/shared';
 import { createSyncPr, postOutcome } from '../lib/api';
 
-/**
- * Speak a cue in the browser via Web Speech API. This is the reliable voice
- * path: the agent's LiveKit audio track is short-lived and blocked by autoplay,
- * but the VOICE_CUE text arrives over the data channel, so the browser can say
- * it instantly. Needs a prior user gesture to be unlocked (see primeSpeech).
- */
+const browserTtsFallbackEnabled = import.meta.env.VITE_ENABLE_BROWSER_TTS_FALLBACK === 'true';
+
+/** Speak a cue in the browser only when the explicit fallback flag is enabled. */
 export function speakInBrowser(text: string): void {
+  if (!browserTtsFallbackEnabled) return;
   if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return;
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 1.05;
@@ -18,8 +16,9 @@ export function speakInBrowser(text: string): void {
   window.speechSynthesis.speak(u);
 }
 
-/** Unlock speechSynthesis from a user gesture so later cues are allowed to play. */
+/** Unlock speechSynthesis from a user gesture when the browser fallback is enabled. */
 export function primeSpeech(): void {
+  if (!browserTtsFallbackEnabled) return;
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(' ');
   u.volume = 0;
@@ -44,7 +43,7 @@ export function useInterventions(room: Room | null) {
       if (msg.type === 'HERMES_MESSAGE') setHermes(msg.message);
       if (msg.type === 'VOICE_CUE') {
         setVoiceCue(msg.text);
-        speakInBrowser(msg.text); // reliable browser voice on the cue
+        speakInBrowser(msg.text);
       }
     };
     room.on(RoomEvent.DataReceived, onData);

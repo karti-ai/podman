@@ -25,6 +25,7 @@ export const env = {
   GEMINI_API_KEY: reqAny('GEMINI_API_KEY', ['GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY']),
   GEMINI_VISION_MODEL: opt('GEMINI_VISION_MODEL', 'gemini-2.0-flash'),
   GEMINI_LIVE_MODEL: opt('GEMINI_LIVE_MODEL', 'gemini-3.1-flash-tts-preview'),
+  GEMINI_TTS_VOICE: opt('GEMINI_TTS_VOICE', 'Charon'),
   GEMINI_EMBEDDING_MODEL: opt('GEMINI_EMBEDDING_MODEL', 'gemini-embedding-001'),
   // GitHub
   GITHUB_TOKEN: req('GITHUB_TOKEN'),

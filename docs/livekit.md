@@ -41,22 +41,23 @@ room.on(RoomEvent.DataReceived, (payload, participant) => {
 
 ---
 
-## Hermes side (LiveKit Agent)
+## Hermes side (PodMan LiveKit participant)
 
-**Framework:** LiveKit Agents (Node.js)
+**Framework:** `@livekit/rtc-node`
 
 **Startup:**
 
 1. Hermes mints its own token via the same `createPodToken` function with `identity: 'podman-hermes'`
 2. Connects to the configured room as `podman-hermes`
-3. Registers as a LiveKit Agent with Gemini Live 2.5 as voice provider
+3. Publishes data-channel cards/messages and short Gemini TTS audio tracks
 
 **Voice delivery:**
 
 1. Nudge message text is ready (from Gemini text generation)
-2. Hermes passes text to Gemini Live 2.5 via LiveKit Agents voice pipeline
-3. Audio streams into the room in real-time
-4. All participants hear it
+2. Hermes sends a natural-speaking prompt to Gemini TTS
+3. Gemini returns PCM audio using the configured voice
+4. Hermes publishes the audio as a short LiveKit track
+5. All participants hear it
 
 **Data channel message (sent alongside audio):**
 
@@ -92,6 +93,7 @@ Hermes uses the same endpoint. Grants:
 ## Gemini voice model
 
 - Model ID: `gemini-3.1-flash-tts-preview`
+- Default voice: `Charon` (`GEMINI_TTS_VOICE`)
 - Hermes generates Gemini TTS audio and publishes it as a LiveKit audio track.
 - The backend keeps a Gemini Live path for future model availability, but the verified deployment path uses TTS.
 

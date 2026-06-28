@@ -81,8 +81,8 @@ export class PodMan {
       (collision.githubState?.unpushed ? ' (unpushed).' : '.') +
       (prior ? ' Seen before.' : '');
 
-    // Spoken line is even shorter so the voice cue lands fast on stage.
-    const voiceLine = `Conflict. ${names}, both on ${shortFile}.`;
+    // Spoken line stays short, but uses natural phrasing for Gemini TTS prosody.
+    const voiceLine = `Heads up. ${names} are both editing ${shortFile}. Please sync before pushing.`;
 
     const intervention: Intervention = {
       id: `int_${Date.now()}`,

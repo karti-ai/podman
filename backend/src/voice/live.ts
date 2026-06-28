@@ -17,6 +17,16 @@ const FRAME_SAMPLES = SAMPLE_RATE / 10;
 const encoder = new TextEncoder();
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
+function ttsPrompt(message: string): string {
+  return [
+    'Speak this PodMan coordination alert as a calm, natural engineering teammate.',
+    'Use warm human pacing, clear pronunciation, and a brief pause after the first sentence.',
+    'Do not add extra words, labels, markdown, or sound effects.',
+    '',
+    message,
+  ].join('\n');
+}
+
 async function publishVoiceCue(room: Room, message: string): Promise<void> {
   const cue: DataMessage = { type: 'VOICE_CUE', text: message };
   await room.localParticipant?.publishData(encoder.encode(JSON.stringify(cue)), {
@@ -62,10 +72,11 @@ function framesFromPcmBase64(data: string, mimeType?: string): AudioFrame[] {
 async function generateTtsFrames(message: string): Promise<AudioFrame[]> {
   const res = await ai.models.generateContent({
     model: env.GEMINI_LIVE_MODEL,
-    contents: [{ parts: [{ text: message }] }],
+    contents: [{ parts: [{ text: ttsPrompt(message) }] }],
     config: {
       responseModalities: [Modality.AUDIO],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: env.GEMINI_TTS_VOICE } } },
+      temperature: 0.8,
     },
   });
   const parts = res.candidates?.[0]?.content?.parts ?? [];
@@ -87,7 +98,11 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
   });
   const session: Session = await ai.live.connect({
     model: env.GEMINI_LIVE_MODEL,
-    config: { responseModalities: [Modality.AUDIO] },
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: env.GEMINI_TTS_VOICE } } },
+      temperature: 0.8,
+    },
     callbacks: {
       onmessage: (event) => {
         void (async () => {
@@ -96,7 +111,7 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
         })();
       },
       onerror: (event) => {
-        console.warn(`[voice] Gemini Live error: ${event.message}`);
+        console.warn(`[voice] Gemini voice error: ${event.message}`);
         done();
       },
       onclose: done,
@@ -104,7 +119,7 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
   });
 
   session.sendClientContent({
-    turns: [{ role: 'user', parts: [{ text: message }] }],
+    turns: [{ role: 'user', parts: [{ text: ttsPrompt(message) }] }],
     turnComplete: true,
   });
 
@@ -113,7 +128,7 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
 }
 
 /**
- * Speak a message into the LiveKit room using Gemini Live audio. A data-channel
+ * Speak a message into the LiveKit room using Gemini audio. A data-channel
  * VOICE_CUE is sent first so clients still get the cue if audio generation or
  * publishing fails.
  */
@@ -133,7 +148,7 @@ export async function speak(room: Room, message: string): Promise<void> {
     if (publication.sid) await room.localParticipant.unpublishTrack(publication.sid, true);
     await source.close();
   } catch (err) {
-    console.warn(`[voice] Gemini Live publish failed: ${(err as Error).message}`);
+    console.warn(`[voice] Gemini voice publish failed: ${(err as Error).message}`);
     await source.close().catch(() => {});
   }
 }

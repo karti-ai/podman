@@ -240,6 +240,7 @@ async function checkGeminiVision() {
 async function checkGeminiVoiceModel() {
   const key = configuredGeminiKey();
   const model = process.env.GEMINI_LIVE_MODEL ?? 'gemini-3.1-flash-tts-preview';
+  const voice = process.env.GEMINI_TTS_VOICE ?? 'Charon';
   const res = await doFetch(
     `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key.value)}`,
   );
@@ -257,10 +258,18 @@ async function checkGeminiVoiceModel() {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: 'Say clearly: PodMan voice check.' }] }],
+        contents: [
+          {
+            parts: [
+              {
+                text: 'Speak this as a calm engineering teammate. Say only: PodMan voice check.',
+              },
+            ],
+          },
+        ],
         generationConfig: {
           responseModalities: ['AUDIO'],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
         },
       }),
     },
@@ -269,7 +278,7 @@ async function checkGeminiVoiceModel() {
   const ttsBody = await tts.json();
   const audio = ttsBody.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   if (!audio) throw new Error('Gemini voice response had no audio');
-  return `${model}, generated ${Buffer.from(audio, 'base64').byteLength} audio bytes`;
+  return `${model}/${voice}, generated ${Buffer.from(audio, 'base64').byteLength} audio bytes`;
 }
 
 async function checkGeminiEmbeddings() {
