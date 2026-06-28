@@ -23,6 +23,10 @@ lk.165-22-129-249.sslip.io {
 	}
 }
 
+gemini.165-22-129-249.sslip.io {
+	reverse_proxy 127.0.0.1:3000
+}
+
 podman.live, www.podman.live {
 	route {
 		handle /api/* {

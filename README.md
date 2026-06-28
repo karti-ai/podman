@@ -148,7 +148,9 @@ sequenceDiagram
    memory.
 8. PodMan sends the smallest useful intervention: card first, Hermes message for
    coordination, voice only when urgent.
-9. The user's response is saved as an outcome, closing the continual-learning
+9. Urgent voice uses Gemini TTS published as a LiveKit audio track. The browser
+   unlocks LiveKit audio from a user gesture and attaches remote audio tracks.
+10. The user's response is saved as an outcome, closing the continual-learning
    loop.
 
 ---

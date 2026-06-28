@@ -220,7 +220,8 @@ From the remote plan snapshot and health check on `2026-06-27`:
 - Real Gemini inference from a live shared IDE frame using the stage key/model.
 - Real data-channel intervention card rendering in the active frontend.
 - Hermes message routing to teammates.
-- Voice escalation heard by participants through LiveKit.
+- Voice escalation heard by participants through LiveKit, including
+  duration-based track holding so longer Gemini TTS announcements finish.
 - A meaningful real sync PR flow with correct GitHub scopes and artifact.
 - Atlas Vector Search / Voyage recall path.
 - DigitalOcean static site + API service + LiveKit agent worker all running

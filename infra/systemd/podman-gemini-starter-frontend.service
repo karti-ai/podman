@@ -1,0 +1,18 @@
+[Unit]
+Description=PodMan LiveKit Gemini starter frontend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/podman/examples/livekit-gemini-hacker-starter/frontend
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/pnpm start --hostname 127.0.0.1 --port 3000
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

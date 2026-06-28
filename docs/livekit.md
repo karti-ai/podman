@@ -24,9 +24,13 @@ LiveKit is the real-time backbone for PodMan. It handles room presence and voice
 
 **Receiving:**
 
-- LiveKit client automatically receives Hermes audio track
-- No special subscription needed — LiveKit delivers audio to all participants
-- PWA also listens for data channel messages from Hermes for UI card updates
+- LiveKit client subscribes to remote Hermes audio tracks and attaches them to
+  a hidden audio sink in the DOM.
+- Browser autoplay restrictions still apply. The PWA calls `room.startAudio()`
+  from user gestures such as first room click, `Enable audio`, `Test PodMan
+  voice`, and `Share screen`.
+- PWA also listens for data channel messages from Hermes for UI card updates and
+  `VOICE_CUE` fallback text.
 
 **Data channel listener (PWA):**
 
@@ -49,15 +53,19 @@ room.on(RoomEvent.DataReceived, (payload, participant) => {
 
 1. Hermes mints its own token via the same `createPodToken` function with `identity: 'podman-hermes'`
 2. Connects to the configured room as `podman-hermes`
-3. Publishes data-channel cards/messages and short Gemini TTS audio tracks
+3. Publishes data-channel cards/messages and Gemini TTS audio tracks
 
 **Voice delivery:**
 
 1. Nudge message text is ready (from Gemini text generation)
 2. Hermes sends a natural-speaking prompt to Gemini TTS
 3. Gemini returns PCM audio using the configured voice
-4. Hermes publishes the audio as a short LiveKit track
-5. All participants hear it
+4. Hermes publishes the audio as a LiveKit microphone-source track
+5. Hermes keeps the track published for the generated audio duration plus tail
+   silence and a hold window. This avoids browser-side cutoff when LiveKit's
+   queued playout signal returns before subscribers finish playing buffered
+   audio.
+6. All participants hear it after browser audio has been unlocked
 
 **Data channel message (sent alongside audio):**
 
@@ -95,6 +103,8 @@ Hermes uses the same endpoint. Grants:
 - Model ID: `gemini-3.1-flash-tts-preview`
 - Default voice: `Charon` (`GEMINI_TTS_VOICE`)
 - Hermes generates Gemini TTS audio and publishes it as a LiveKit audio track.
+- Voice publishing logs generated frame count, estimated duration, queued
+  playout, and the final subscriber hold time for diagnostics.
 - The backend keeps a Gemini Live path for future model availability, but the verified deployment path uses TTS.
 
 ---

@@ -5,3 +5,4 @@ pnpm-lock.yaml
 .omc
 *.log
 .agents
+examples/livekit-gemini-hacker-starter

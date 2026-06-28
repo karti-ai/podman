@@ -16,10 +16,11 @@ import { env } from '../env.js';
 const SAMPLE_RATE = 24_000;
 const CHANNELS = 1;
 const FRAME_SAMPLES = SAMPLE_RATE / 10;
-const SUBSCRIBER_READY_MS = 750;
-const AUDIO_PREROLL_MS = 300;
-const AUDIO_TAIL_MS = 300;
-const VOICE_QUEUE_MS = 30_000;
+const SUBSCRIBER_READY_MS = 1_500;
+const AUDIO_PREROLL_MS = 800;
+const AUDIO_TAIL_MS = 1_500;
+const AUDIO_HOLD_MS = 5_000;
+const VOICE_QUEUE_MS = 60_000;
 const VOICE_TRACK_PREFIX = 'podman-hermes-voice';
 const encoder = new TextEncoder();
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
@@ -115,7 +116,7 @@ function fallbackVoiceLine(message: string): string {
   return 'PodMan noticed a critical conflict. Please sync with the team before pushing.';
 }
 
-async function speakWithTts(source: AudioSource, message: string): Promise<void> {
+async function speakWithTts(source: AudioSource, message: string): Promise<number> {
   let frames: AudioFrame[];
   try {
     frames = await generateTtsFrames(message);
@@ -125,13 +126,21 @@ async function speakWithTts(source: AudioSource, message: string): Promise<void>
     frames = await generateTtsFrames(fallback);
   }
   if (frames.length === 0) throw new Error('Gemini TTS returned no audio frames');
-  console.log(`[voice] publishing Gemini TTS audio frames=${frames.length}`);
+  const durationMs = frames.reduce(
+    (sum, frame) => sum + (frame.samplesPerChannel / frame.sampleRate) * 1000,
+    0,
+  );
+  console.log(
+    `[voice] publishing Gemini TTS audio frames=${frames.length} durationMs=${Math.round(durationMs)}`,
+  );
   for (const frame of frames) {
     await source.captureFrame(frame);
   }
+  return durationMs;
 }
 
-async function speakWithLive(source: AudioSource, message: string): Promise<void> {
+async function speakWithLive(source: AudioSource, message: string): Promise<number> {
+  let durationMs = 0;
   let done: () => void = () => {};
   const donePromise = new Promise<void>((resolve) => {
     done = resolve;
@@ -146,7 +155,10 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
     callbacks: {
       onmessage: (event) => {
         void (async () => {
-          for (const frame of audioFrames(event)) await source.captureFrame(frame);
+          for (const frame of audioFrames(event)) {
+            durationMs += (frame.samplesPerChannel / frame.sampleRate) * 1000;
+            await source.captureFrame(frame);
+          }
           if (event.serverContent?.turnComplete || event.serverContent?.generationComplete) done();
         })();
       },
@@ -165,19 +177,26 @@ async function speakWithLive(source: AudioSource, message: string): Promise<void
 
   await Promise.race([donePromise, new Promise((resolve) => setTimeout(resolve, 15_000))]);
   session.close();
+  return durationMs;
 }
 
 async function waitForVoicePlayout(source: AudioSource): Promise<void> {
   if (source.queuedDuration <= 0) return;
+  const queuedMs = Math.round(source.queuedDuration);
+  console.log(`[voice] waiting for queued audio playout queuedMs=${queuedMs}`);
   await Promise.race([
     source.waitForPlayout(),
     new Promise((resolve) => setTimeout(resolve, VOICE_QUEUE_MS + 2_000)),
   ]);
+  console.log('[voice] queued audio playout complete');
 }
 
 async function captureSilence(source: AudioSource, durationMs: number): Promise<void> {
-  const samples = Math.max(1, Math.round((SAMPLE_RATE * durationMs) / 1000));
-  await source.captureFrame(new AudioFrame(new Int16Array(samples), SAMPLE_RATE, CHANNELS, samples));
+  const totalSamples = Math.max(1, Math.round((SAMPLE_RATE * durationMs) / 1000));
+  for (let offset = 0; offset < totalSamples; offset += FRAME_SAMPLES) {
+    const samples = Math.min(FRAME_SAMPLES, totalSamples - offset);
+    await source.captureFrame(new AudioFrame(new Int16Array(samples), SAMPLE_RATE, CHANNELS, samples));
+  }
 }
 
 async function speakAudio(room: Room, message: string): Promise<void> {
@@ -195,10 +214,14 @@ async function speakAudio(room: Room, message: string): Promise<void> {
     publicationSid = publication.sid;
     await delay(SUBSCRIBER_READY_MS);
     await captureSilence(source, AUDIO_PREROLL_MS);
-    if (env.GEMINI_LIVE_MODEL.includes('tts')) await speakWithTts(source, message);
-    else await speakWithLive(source, message);
+    const audioDurationMs = env.GEMINI_LIVE_MODEL.includes('tts')
+      ? await speakWithTts(source, message)
+      : await speakWithLive(source, message);
     await captureSilence(source, AUDIO_TAIL_MS);
     await waitForVoicePlayout(source);
+    const manualHoldMs = Math.ceil(audioDurationMs + AUDIO_TAIL_MS + AUDIO_HOLD_MS);
+    console.log(`[voice] holding track for subscriber playout holdMs=${manualHoldMs}`);
+    await delay(manualHoldMs);
   } catch (err) {
     console.warn(`[voice] Gemini voice publish failed: ${(err as Error).message}`);
   } finally {
