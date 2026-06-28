@@ -363,3 +363,50 @@ This repo is actively used by **4 engineers at the same time**. Claude sessions 
 - **Flag merge risk explicitly** before editing a shared file (e.g., `backend/src/index.ts`, `frontend/src/App.tsx`). Say so, then proceed only if the user confirms.
 - **Prefer additive changes** — new files, new functions — over modifying existing ones. This minimizes merge conflicts in a concurrent team.
 - **When proposing new files**, verify they match the file names listed in the relevant task in `docs/PLAN.md`. Do not invent new paths.
+
+---
+
+## Production deployment & ops — READ BEFORE TOUCHING THE SERVER
+
+The live system runs on a DigitalOcean droplet at `165.22.129.249`
+(public: `https://165-22-129-249.sslip.io/` and `podman.live`). Repo on box:
+`/root/podman`. SSH is `root@165.22.129.249` (password auth; ask the team for
+the password — it is **not** stored in the repo).
+
+### HARD RULE: manage processes with systemd, never manual `node`
+
+The backend API and the LiveKit agent run as **systemd services** with
+`Restart=always`:
+
+- `podman-platform-api.service` → `node backend/dist/server.js` (cwd `/root/podman`)
+- `podman-platform-agent.service` → `node dist/agent.js` (cwd `/root/podman/backend`,
+  `Environment=POD_ROOM=demo-pod`, `EnvironmentFile=/root/podman/backend/.env`)
+
+**Do not start the agent or server by hand** (`node ...`, `nohup`, `setsid`,
+`tsx`). The agent joins LiveKit with a fixed identity (`podman-hermes`); a
+second instance with the same identity **evicts the first from the room**, and
+they flap forever — silently dropping every intervention/voice update. systemd
+keeps exactly one of each alive. If you launched a manual process, kill it and
+let systemd own the singleton.
+
+### Frontend is static, served by Caddy
+
+The frontend is a Vite build served by **Caddy** from `/var/www/podman`
+(`/etc/caddy/Caddyfile`). Caddy reverse-proxies `/api/*` and `/health` to
+`127.0.0.1:8787`. The LiveKit URL reaches the browser via the backend
+`/api/token` response, **not** `VITE_LIVEKIT_URL` (intentionally empty in
+`frontend/.env`).
+
+### Deploy procedure (run on the box)
+
+```bash
+cd /root/podman && git pull && pnpm -r build
+rm -rf /var/www/podman/* && cp -r frontend/dist/* /var/www/podman/
+systemctl restart podman-platform-api podman-platform-agent
+systemctl status podman-platform-agent --no-pager   # verify it came up
+```
+
+`pnpm -r build` order matters: `@podman/shared` builds first, or backend/frontend
+typecheck fails with "Cannot find module '@podman/shared'". MongoDB is
+**mandatory** — both services ping Mongo at boot and exit loudly if it is
+unreachable (intentional; fix the `.env` creds, do not re-add silent fallbacks).
